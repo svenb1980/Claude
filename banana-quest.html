@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Banana Quest</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const WORLD_W = 2800;
+const WORLD_H = 2800;
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.code] = true;  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); });
+window.addEventListener('keyup',   e => { keys[e.code] = false; });
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+const particles = [];
+function spawnParticles(x, y, color, count, speed = 2.5) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = (0.5 + Math.random()) * speed;
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+      color, life: 300 + Math.random()*400, maxLife: 700, r: 2 + Math.random()*3 });
+  }
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.93; p.vy *= 0.93;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+function drawParticles(camX, camY) {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x - camX, p.y - camY, p.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ── Sword ─────────────────────────────────────────────────────────────────────
+class Sword {
+  constructor(owner, isEnemy) {
+    this.owner    = owner;
+    this.isEnemy  = isEnemy;
+    this.swinging = false;
+    this.angle    = 0;
+    this.startA   = 0;
+    this.endA     = 0;
+    this.progress = 0;
+    this.duration = isEnemy ? 380 : 280;
+    this.timer    = 0;
+    this.length   = 38;
+    this.hit      = false;
+  }
+
+  startSwing() {
+    if (this.swinging) return false;
+    this.swinging = true;
+    this.timer    = 0;
+    this.hit      = false;
+    this.startA   = this.owner.facing - Math.PI * 0.45;
+    this.endA     = this.owner.facing + Math.PI * 0.45;
+    this.angle    = this.startA;
+    return true;
+  }
+
+  update(dt) {
+    if (!this.swinging) return;
+    this.timer   += dt;
+    this.progress = Math.min(this.timer / this.duration, 1);
+    // ease-out swing
+    const t    = 1 - Math.pow(1 - this.progress, 2);
+    this.angle = this.startA + (this.endA - this.startA) * t;
+    if (this.progress >= 1) this.swinging = false;
+  }
+
+  tip() {
+    return {
+      x: this.owner.x + Math.cos(this.angle) * this.length,
+      y: this.owner.y + Math.sin(this.angle) * this.length
+    };
+  }
+
+  draw(camX, camY) {
+    if (!this.swinging) return;
+    const ox = this.owner.x - camX;
+    const oy = this.owner.y - camY;
+
+    ctx.save();
+    ctx.translate(ox, oy);
+
+    // Swing trail
+    ctx.beginPath();
+    ctx.arc(0, 0, this.length, this.startA, this.angle);
+    ctx.strokeStyle = this.isEnemy ? 'rgba(180,50,50,0.18)' : 'rgba(80,200,80,0.22)';
+    ctx.lineWidth = 10;
+    ctx.stroke();
+
+    // Sword blade
+    ctx.save();
+    ctx.rotate(this.angle);
+
+    if (this.isEnemy) {
+      // Apple sword: dark iron blade
+      ctx.fillStyle = '#5D4037'; ctx.fillRect(-3, -6, 6, 10);  // guard
+      ctx.fillStyle = '#607D8B'; ctx.fillRect(-2.5, -this.length, 5, this.length - 5);
+      ctx.fillStyle = '#90A4AE'; ctx.fillRect(-1.5, -this.length + 2, 3, 8); // shine
+      ctx.fillStyle = '#78909C';
+      ctx.beginPath();
+      ctx.moveTo(-2.5, -this.length);
+      ctx.lineTo(2.5, -this.length);
+      ctx.lineTo(0, -this.length - 7);
+      ctx.fill();
+    } else {
+      // Cucumber sword
+      ctx.fillStyle = '#8B4513'; ctx.fillRect(-4, -5, 8, 10); // handle
+      ctx.fillStyle = '#33691E'; ctx.fillRect(-4, -this.length, 8, this.length - 4);
+      ctx.fillStyle = '#558B2F';
+      for (let i = 0; i < 4; i++) ctx.fillRect(-3, -this.length + 4 + i * 8, 6, 3);
+      ctx.fillStyle = '#7CB342';
+      ctx.beginPath();
+      ctx.ellipse(0, -this.length, 4, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+    ctx.restore();
+  }
+}
+
+// ── Player (Banana) ───────────────────────────────────────────────────────────
+class Player {
+  constructor(x, y) {
+    this.x       = x;
+    this.y       = y;
+    this.r       = 14;
+    this.speed   = 3.2;
+    this.facing  = 0;
+    this.hp      = 100;
+    this.maxHp   = 100;
+    this.sword   = new Sword(this, false);
+    this.atkCD   = 0;
+    this.iframes = 0;
+    this.walkT   = 0;
+    this.walkF   = 0;
+    this.moving  = false;
+    this.score   = 0;
+  }
+
+  update(dt, enemies) {
+    let dx = 0, dy = 0;
+    if (keys['ArrowLeft'])  dx -= 1;
+    if (keys['ArrowRight']) dx += 1;
+    if (keys['ArrowUp'])    dy -= 1;
+    if (keys['ArrowDown'])  dy += 1;
+
+    const mag = Math.sqrt(dx*dx + dy*dy);
+    if (mag > 0) {
+      dx /= mag; dy /= mag;
+      this.facing = Math.atan2(dy, dx);
+      this.moving = true;
+    } else {
+      this.moving = false;
+    }
+
+    this.x = Math.max(this.r, Math.min(WORLD_W - this.r, this.x + dx * this.speed));
+    this.y = Math.max(this.r, Math.min(WORLD_H - this.r, this.y + dy * this.speed));
+
+    if (this.moving) {
+      this.walkT += dt;
+      if (this.walkT > 140) { this.walkT = 0; this.walkF = (this.walkF + 1) % 4; }
+    }
+
+    if (this.atkCD   > 0) this.atkCD   -= dt;
+    if (this.iframes > 0) this.iframes -= dt;
+
+    if (keys['Space'] && this.atkCD <= 0) {
+      this.sword.startSwing();
+      this.atkCD = 480;
+    }
+
+    this.sword.update(dt);
+
+    // Sword hit on enemies
+    if (this.sword.swinging && !this.sword.hit) {
+      const tip = this.sword.tip();
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const d = dist(e.x, e.y, tip.x, tip.y);
+        if (d < e.r + 12) {
+          const dmg = 12 + Math.random() * 23; // 12–35% random hit
+          e.takeDamage(dmg);
+          if (!e.alive) this.score++;
+          this.sword.hit = true;
+          spawnParticles(tip.x, tip.y, '#aaff88', 5, 3);
+          break;
+        }
+      }
+    }
+  }
+
+  takeDamage(dmg) {
+    if (this.iframes > 0) return;
+    this.hp     = Math.max(0, this.hp - dmg);
+    this.iframes = 900;
+    spawnParticles(this.x, this.y, '#FFD700', 8, 3);
+  }
+
+  draw(camX, camY) {
+    const sx = this.x - camX;
+    const sy = this.y - camY;
+
+    // Shadow
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy + 14, 14, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    this.sword.draw(camX, camY);
+
+    // Invincibility blink
+    if (this.iframes > 0 && Math.floor(this.iframes / 80) % 2 === 0) return;
+
+    const bob = this.moving ? Math.sin(this.walkF * Math.PI / 2) * 2 : 0;
+
+    ctx.save();
+    ctx.translate(sx, sy + bob);
+    ctx.rotate(this.facing + Math.PI / 2);
+
+    // ── Draw banana (top-down) ──
+    // Main body
+    ctx.fillStyle   = '#FFD600';
+    ctx.strokeStyle = '#F9A825';
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.moveTo(-7, 14);
+    ctx.bezierCurveTo(-17, 4, -17, -18, 0, -20);
+    ctx.bezierCurveTo(17, -18, 17, 4, 7, 14);
+    ctx.bezierCurveTo(3, 20, -3, 20, -7, 14);
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner highlight
+    ctx.fillStyle = '#FFF176';
+    ctx.beginPath();
+    ctx.moveTo(-4, 10);
+    ctx.bezierCurveTo(-12, 2, -12, -14, 0, -16);
+    ctx.bezierCurveTo(5, -15, 8, -5, 5, 9);
+    ctx.bezierCurveTo(3, 13, -2, 14, -4, 10);
+    ctx.fill();
+
+    // Tips
+    ctx.fillStyle = '#795548';
+    ctx.beginPath(); ctx.ellipse(-7, 15, 4, 3, -0.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 7, 15, 4, 3,  0.4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 0,-21, 3,  4,    0, 0, Math.PI*2); ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(-5,-6,3,2.5,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 5,-6,3,2.5,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.arc(-5,-6,1.4,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc( 5,-6,1.4,0,Math.PI*2); ctx.fill();
+
+    // Smile
+    ctx.strokeStyle = '#5D4037';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, -2, 4, 0.15, Math.PI - 0.15);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  drawHUD() {
+    // HP bar background panel
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, 14, 14, 220, 38, 8);
+    ctx.fill();
+
+    // HP bar
+    const bw = 160, bh = 16, bx = 52, by = 23;
+    ctx.fillStyle = '#222';
+    ctx.fillRect(bx, by, bw, bh);
+    const pct = this.hp / this.maxHp;
+    const hpColor = pct > 0.5 ? '#69F0AE' : pct > 0.25 ? '#FFCA28' : '#FF5252';
+    ctx.fillStyle = hpColor;
+    ctx.fillRect(bx, by, bw * pct, bh);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, bw, bh);
+
+    ctx.fillStyle = '#FFD600';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('🍌', 18, 40);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(`HP ${Math.ceil(this.hp)}`, bx + 4, by + 12);
+
+    // Score
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, 14, 60, 180, 30, 8);
+    ctx.fill();
+    ctx.fillStyle = '#FFD600';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(`🍎 Defeated: ${this.score}`, 22, 80);
+  }
+}
+
+// ── Enemy (Apple) ─────────────────────────────────────────────────────────────
+class Enemy {
+  constructor(x, y) {
+    this.x        = x;
+    this.y        = y;
+    this.r        = 15;
+    this.speed    = 1.1 + Math.random() * 0.9;
+    this.facing   = Math.random() * Math.PI * 2;
+    this.hp       = 100;
+    this.maxHp    = 100;
+    this.alive    = true;
+    this.sword    = new Sword(this, true);
+    this.state    = 'wander';
+    this.wanderTgt = { x, y };
+    this.wanderT  = 0;
+    this.atkCD    = 1000 + Math.random() * 800;
+    this.aggroR   = 240;
+    this.atkR     = 68;
+    this.hitFlash = 0;
+    this.walkT    = 0;
+    this.walkF    = 0;
+  }
+
+  takeDamage(dmg) {
+    this.hp       = Math.max(0, this.hp - dmg);
+    this.hitFlash = 220;
+    spawnParticles(this.x, this.y, '#FF5252', 7, 3);
+    if (this.hp <= 0) {
+      this.alive = false;
+      spawnParticles(this.x, this.y, '#FF6D00', 18, 4);
+      spawnParticles(this.x, this.y, '#FFD600', 10, 2.5);
+    }
+  }
+
+  update(dt, player) {
+    if (!this.alive) return;
+    const dx   = player.x - this.x;
+    const dy   = player.y - this.y;
+    const d    = Math.sqrt(dx*dx + dy*dy);
+
+    if (d < this.aggroR)      this.state = d < this.atkR ? 'attack' : 'chase';
+    else                      this.state = 'wander';
+
+    if (this.atkCD > 0) this.atkCD -= dt;
+
+    if (this.state === 'wander') {
+      this.wanderT -= dt;
+      if (this.wanderT <= 0) {
+        this.wanderT = 1800 + Math.random() * 2200;
+        const a = Math.random() * Math.PI * 2;
+        const r = 80 + Math.random() * 140;
+        this.wanderTgt = {
+          x: Math.max(60, Math.min(WORLD_W-60, this.x + Math.cos(a)*r)),
+          y: Math.max(60, Math.min(WORLD_H-60, this.y + Math.sin(a)*r))
+        };
+      }
+      const wx = this.wanderTgt.x - this.x;
+      const wy = this.wanderTgt.y - this.y;
+      const wd = Math.sqrt(wx*wx + wy*wy);
+      if (wd > 4) {
+        this.facing = Math.atan2(wy, wx);
+        this.x += (wx/wd) * this.speed * 0.45;
+        this.y += (wy/wd) * this.speed * 0.45;
+        this.walkT += dt;
+      }
+    }
+
+    if (this.state === 'chase') {
+      this.facing = Math.atan2(dy, dx);
+      this.x += (dx/d) * this.speed;
+      this.y += (dy/d) * this.speed;
+      this.walkT += dt;
+    }
+
+    if (this.state === 'attack') {
+      this.facing = Math.atan2(dy, dx);
+      if (this.atkCD <= 0) {
+        this.sword.startSwing();
+        this.atkCD = 1400 + Math.random() * 600;
+      }
+    }
+
+    if (this.walkT > 170) { this.walkT = 0; this.walkF = (this.walkF+1)%4; }
+
+    this.sword.update(dt);
+
+    // Sword hits player
+    if (this.sword.swinging && !this.sword.hit) {
+      const tip = this.sword.tip();
+      const pd  = dist(player.x, player.y, tip.x, tip.y);
+      if (pd < player.r + 10) {
+        player.takeDamage(7 + Math.random() * 10);
+        this.sword.hit = true;
+      }
+    }
+
+    if (this.hitFlash > 0) this.hitFlash -= dt;
+
+    this.x = Math.max(this.r, Math.min(WORLD_W - this.r, this.x));
+    this.y = Math.max(this.r, Math.min(WORLD_H - this.r, this.y));
+  }
+
+  draw(camX, camY) {
+    if (!this.alive) return;
+    const sx = this.x - camX;
+    const sy = this.y - camY;
+
+    // Cull off-screen
+    if (sx < -60 || sx > canvas.width+60 || sy < -60 || sy > canvas.height+60) return;
+
+    // Shadow
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy+15, 14, 5, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    this.sword.draw(camX, camY);
+
+    // Hit flash overlay
+    if (this.hitFlash > 0) {
+      ctx.save();
+      ctx.globalAlpha = this.hitFlash / 220 * 0.7;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, this.r + 5, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Apple body
+    ctx.fillStyle   = this.hitFlash > 0 ? '#FF8A80' : '#E53935';
+    ctx.strokeStyle = '#B71C1C';
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.arc(0, 2, 16, 0, Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(-5, -4, 6, 4, -0.5, 0, Math.PI*2);
+    ctx.fill();
+
+    // Bottom indent
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(0, 16, 5, 3, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // Stem
+    ctx.strokeStyle = '#4E342E';
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -14);
+    ctx.bezierCurveTo(3, -21, 9, -20, 7, -15);
+    ctx.stroke();
+
+    // Leaf
+    ctx.fillStyle   = '#2E7D32';
+    ctx.strokeStyle = '#1B5E20';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.ellipse(6, -18, 7, 3, 0.9, 0, Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Angry eyes
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(-5, 1, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse( 5, 1, 4, 3, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#1A237E';
+    ctx.beginPath(); ctx.arc(-5, 2, 2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc( 5, 2, 2, 0, Math.PI*2); ctx.fill();
+    // Pupils
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(-5, 2, 1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc( 5, 2, 1, 0, Math.PI*2); ctx.fill();
+
+    // Angry brows
+    ctx.strokeStyle = '#4a0000';
+    ctx.lineWidth   = 2;
+    ctx.beginPath(); ctx.moveTo(-9,-3); ctx.lineTo(-1,-1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( 9,-3); ctx.lineTo( 1,-1); ctx.stroke();
+
+    // Frown
+    ctx.strokeStyle = '#4a0000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 9, 5, Math.PI*0.15, Math.PI*0.85, true);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Health bar
+    const bw = 44, bh = 6;
+    const bx = sx - bw/2, by = sy - 30;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(bx-1, by-1, bw+2, bh+2);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(bx, by, bw, bh);
+    const hp = this.hp / this.maxHp;
+    ctx.fillStyle = hp > 0.5 ? '#69F0AE' : hp > 0.25 ? '#FFCA28' : '#FF5252';
+    ctx.fillRect(bx, by, bw * hp, bh);
+  }
+}
+
+// ── World ─────────────────────────────────────────────────────────────────────
+const offscreen = document.createElement('canvas');
+offscreen.width  = WORLD_W;
+offscreen.height = WORLD_H;
+const wctx = offscreen.getContext('2d');
+
+function generateWorld() {
+  // Base
+  wctx.fillStyle = '#4CAF50';
+  wctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Grass patches
+  const gc = ['#43A047','#388E3C','#66BB6A','#558B2F','#33691E','#7CB342'];
+  for (let i = 0; i < 500; i++) {
+    wctx.fillStyle = gc[Math.floor(Math.random()*gc.length)];
+    wctx.beginPath();
+    wctx.ellipse(Math.random()*WORLD_W, Math.random()*WORLD_H,
+      20+Math.random()*70, 15+Math.random()*50, Math.random()*Math.PI, 0, Math.PI*2);
+    wctx.fill();
+  }
+
+  // Flowers
+  const fc = ['#FF80AB','#FFEB3B','#fff','#FF8A65','#CE93D8','#80DEEA'];
+  for (let i = 0; i < 400; i++) {
+    const fx = 80 + Math.random()*(WORLD_W-160);
+    const fy = 80 + Math.random()*(WORLD_H-160);
+    const c  = fc[Math.floor(Math.random()*fc.length)];
+    // Petals
+    for (let p = 0; p < 5; p++) {
+      const pa = (p/5)*Math.PI*2;
+      wctx.fillStyle = c;
+      wctx.beginPath();
+      wctx.ellipse(fx+Math.cos(pa)*4, fy+Math.sin(pa)*4, 3, 2, pa, 0, Math.PI*2);
+      wctx.fill();
+    }
+    wctx.fillStyle = '#FFEB3B';
+    wctx.beginPath(); wctx.arc(fx, fy, 2.5, 0, Math.PI*2); wctx.fill();
+  }
+
+  // Rocks
+  for (let i = 0; i < 50; i++) {
+    const rx = 120 + Math.random()*(WORLD_W-240);
+    const ry = 120 + Math.random()*(WORLD_H-240);
+    wctx.fillStyle = '#78909C';
+    wctx.beginPath();
+    wctx.ellipse(rx, ry, 10+Math.random()*10, 7+Math.random()*7, Math.random()*Math.PI, 0, Math.PI*2);
+    wctx.fill();
+    wctx.fillStyle = '#B0BEC5';
+    wctx.beginPath();
+    wctx.ellipse(rx-2, ry-2, 5, 4, 0, 0, Math.PI*2);
+    wctx.fill();
+  }
+
+  // Border trees
+  const treePositions = [];
+  for (let i = 0; i < 130; i++) {
+    let tx, ty;
+    const side = Math.floor(Math.random()*4);
+    const margin = 55;
+    if      (side===0) { tx=Math.random()*WORLD_W; ty=Math.random()*margin; }
+    else if (side===1) { tx=Math.random()*WORLD_W; ty=WORLD_H-Math.random()*margin; }
+    else if (side===2) { tx=Math.random()*margin;  ty=Math.random()*WORLD_H; }
+    else               { tx=WORLD_W-Math.random()*margin; ty=Math.random()*WORLD_H; }
+    treePositions.push({tx,ty});
+  }
+  // Also scatter some interior trees
+  for (let i = 0; i < 20; i++) {
+    treePositions.push({
+      tx: 150+Math.random()*(WORLD_W-300),
+      ty: 150+Math.random()*(WORLD_H-300)
+    });
+  }
+
+  for (const {tx,ty} of treePositions) {
+    wctx.fillStyle = '#1B5E20';
+    wctx.beginPath(); wctx.arc(tx, ty, 18, 0, Math.PI*2); wctx.fill();
+    wctx.fillStyle = '#2E7D32';
+    wctx.beginPath(); wctx.arc(tx-3, ty-3, 14, 0, Math.PI*2); wctx.fill();
+    wctx.fillStyle = '#388E3C';
+    wctx.beginPath(); wctx.arc(tx-5, ty-5, 9, 0, Math.PI*2); wctx.fill();
+    // trunk dot
+    wctx.fillStyle = '#4E342E';
+    wctx.beginPath(); wctx.arc(tx+2, ty+6, 3, 0, Math.PI*2); wctx.fill();
+  }
+
+  // Path markings (worn dirt path in center)
+  wctx.globalAlpha = 0.18;
+  wctx.fillStyle = '#BCAAA4';
+  wctx.beginPath();
+  wctx.ellipse(WORLD_W/2, WORLD_H/2, 600, 400, 0.3, 0, Math.PI*2);
+  wctx.fill();
+  wctx.globalAlpha = 1;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function dist(ax, ay, bx, by) {
+  return Math.sqrt((ax-bx)**2 + (ay-by)**2);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h);
+  ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r);
+  ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+generateWorld();
+
+const player = new Player(WORLD_W/2, WORLD_H/2);
+
+const enemies = [];
+function spawnEnemy() {
+  const angle = Math.random() * Math.PI * 2;
+  const d     = 350 + Math.random() * 300;
+  const ex    = Math.max(100, Math.min(WORLD_W-100, player.x + Math.cos(angle)*d));
+  const ey    = Math.max(100, Math.min(WORLD_H-100, player.y + Math.sin(angle)*d));
+  enemies.push(new Enemy(ex, ey));
+}
+
+for (let i = 0; i < 8; i++) spawnEnemy();
+
+let respawnT = 0;
+let lastTime = 0;
+let gameOver = false;
+
+const cam = { x: 0, y: 0 };
+
+// ── Controls hint ─────────────────────────────────────────────────────────────
+function drawControls() {
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  roundRect(ctx, 12, canvas.height - 46, 318, 34, 8);
+  ctx.fill();
+  ctx.fillStyle = '#ddd';
+  ctx.font = '12px monospace';
+  ctx.fillText('  Arrow keys: move    Space: swing cucumber 🥒', 18, canvas.height - 24);
+}
+
+// ── Minimap ───────────────────────────────────────────────────────────────────
+function drawMinimap() {
+  const mw = 110, mh = 110;
+  const mx = canvas.width - mw - 14;
+  const my = canvas.height - mh - 14;
+  const scale = mw / WORLD_W;
+
+  ctx.save();
+  ctx.globalAlpha = 0.75;
+  ctx.fillStyle = '#1a3a1a';
+  roundRect(ctx, mx-2, my-2, mw+4, mh+4, 6);
+  ctx.fill();
+  ctx.fillStyle = '#2d5a27';
+  ctx.fillRect(mx, my, mw, mh);
+
+  // Player dot
+  ctx.fillStyle = '#FFD600';
+  ctx.beginPath();
+  ctx.arc(mx + player.x*scale, my + player.y*scale, 3, 0, Math.PI*2);
+  ctx.fill();
+
+  // Enemy dots
+  ctx.fillStyle = '#FF5252';
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    ctx.beginPath();
+    ctx.arc(mx + e.x*scale, my + e.y*scale, 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(mx, my, mw, mh);
+  ctx.restore();
+}
+
+// ── Game Over Screen ──────────────────────────────────────────────────────────
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.textAlign = 'center';
+
+  ctx.font = 'bold 54px monospace';
+  ctx.fillStyle = '#FF5252';
+  ctx.fillText('GAME OVER', canvas.width/2, canvas.height/2 - 60);
+
+  ctx.font = '26px monospace';
+  ctx.fillStyle = '#FFD600';
+  ctx.fillText('🍌  The apple army has won...', canvas.width/2, canvas.height/2);
+
+  ctx.font = '18px monospace';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText(`Apples defeated: ${player.score}`, canvas.width/2, canvas.height/2 + 42);
+
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Press F5 to try again', canvas.width/2, canvas.height/2 + 80);
+
+  ctx.textAlign = 'left';
+}
+
+// ── Loop ──────────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+
+  if (!gameOver) {
+    player.update(dt, enemies);
+    for (const e of enemies) e.update(dt, player);
+    updateParticles(dt);
+
+    // Respawn up to 8 alive enemies
+    respawnT -= dt;
+    if (respawnT <= 0) {
+      if (enemies.filter(e => e.alive).length < 8) spawnEnemy();
+      respawnT = 4000;
+    }
+
+    if (player.hp <= 0) gameOver = true;
+  }
+
+  // Camera
+  cam.x = Math.max(0, Math.min(WORLD_W - canvas.width,  player.x - canvas.width/2));
+  cam.y = Math.max(0, Math.min(WORLD_H - canvas.height, player.y - canvas.height/2));
+
+  // ── Render ──
+  // World (draw only visible slice)
+  ctx.drawImage(offscreen,
+    cam.x, cam.y, canvas.width, canvas.height,
+    0, 0, canvas.width, canvas.height
+  );
+
+  drawParticles(cam.x, cam.y);
+
+  // Sort by Y for draw order
+  const drawList = enemies.filter(e => e.alive).sort((a,b) => a.y - b.y);
+  if (player.y > (drawList[0]?.y ?? Infinity)) {
+    for (const e of drawList) e.draw(cam.x, cam.y);
+    player.draw(cam.x, cam.y);
+  } else {
+    player.draw(cam.x, cam.y);
+    for (const e of drawList) e.draw(cam.x, cam.y);
+  }
+
+  player.drawHUD();
+  drawControls();
+  drawMinimap();
+
+  if (gameOver) drawGameOver();
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
