@@ -232,9 +232,11 @@ async function runApproval() {
       log(`   Assignment: "${info.name}"`, '#aaa');
 
       try {
-        // Select this row via its checkbox (Primary Approval column)
-        const chk = row.querySelector('[data-column-id="ma_selection-column"] input[type="checkbox"]')
-                 ?? row.querySelector('input[type="checkbox"]');
+        // Select this row via its checkbox (data-op-ignore="true" is the stable selector;
+        // the id/name attributes are dynamic session values and must not be used)
+        const chk = row.querySelector(
+          '[data-column-id="ma_selection-column"] input[type="checkbox"][data-op-ignore="true"]'
+        );
         if (chk) {
           if (!chk.checked) chk.click();
         } else {
