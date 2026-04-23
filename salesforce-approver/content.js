@@ -420,15 +420,113 @@ async function runApproval() {
     log(`\n❌ Fatal: ${err.message}`, '#FF5252');
   }
 
-  // ── Summary ────────────────────────────────────────────────────────────────
+  // ── Approval summary ───────────────────────────────────────────────────────
   log('', '');
   log('────────────────────────────────────', '#2a4a2a');
   log(`✅ Approved : ${approved}`, '#69F0AE');
   log(`🚫 Rejected : ${rejected}`, '#FF7043');
   if (errors) log(`⚠️  Errors   : ${errors}  (see log above)`, '#FFCA28');
-  log('Overlay closes in 15 s.', '#555');
+
+  // ── Hours report ───────────────────────────────────────────────────────────
+  log('', '');
+  log('────────────────────────────────────', '#2a4a2a');
+  log('📊 Checking last week\'s hours…', '#90CAF9');
+  setTitle('⏱ Hours Approver — checking hours…');
+
+  await checkHours();
+
+  // Switch to the "Sven - ALL hours last week" tab
+  chrome.runtime.sendMessage({ action: 'switchToHoursTab' }, response => {
+    if (!response?.found) log('ℹ️  Hours tab not found as an open browser tab.', '#888');
+  });
+
+  log('', '');
+  log('Overlay closes in 30 s.', '#555');
   setTitle('⏱ Hours Approver — done');
-  setTimeout(() => overlay?.remove(), 15000);
+  setTimeout(() => overlay?.remove(), 30000);
+}
+
+// ── Last-week hours check ──────────────────────────────────────────────────────
+
+async function fetchLastWeekHours(sid, ver) {
+  // One row per timecard; a person may have multiple timecards (different projects)
+  const soql = [
+    'SELECT pse__Resource__r.Name,',
+    '  pse__Monday_Hours__c, pse__Tuesday_Hours__c, pse__Wednesday_Hours__c,',
+    '  pse__Thursday_Hours__c, pse__Friday_Hours__c, pse__Saturday_Hours__c,',
+    '  pse__Sunday_Hours__c',
+    'FROM pse__Timecard_Header__c',
+    'WHERE pse__Week_Start_Date__c = LAST_WEEK',
+  ].join(' ');
+
+  let url = `/services/data/${ver}/query/?q=${encodeURIComponent(soql)}`;
+  const allRecords = [];
+
+  // Follow pagination (Salesforce returns max 2000 rows per page)
+  while (url) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${sid}`, Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Hours API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    allRecords.push(...(data.records ?? []));
+    url = data.nextRecordsUrl ? data.nextRecordsUrl : null;
+  }
+
+  // Sum hours per person across all their timecards
+  const hoursMap = {};
+  for (const rec of allRecords) {
+    const name = rec.pse__Resource__r?.Name;
+    if (!name) continue;
+    const weekTotal = (rec.pse__Monday_Hours__c    || 0)
+                    + (rec.pse__Tuesday_Hours__c   || 0)
+                    + (rec.pse__Wednesday_Hours__c || 0)
+                    + (rec.pse__Thursday_Hours__c  || 0)
+                    + (rec.pse__Friday_Hours__c    || 0)
+                    + (rec.pse__Saturday_Hours__c  || 0)
+                    + (rec.pse__Sunday_Hours__c    || 0);
+    hoursMap[name] = (hoursMap[name] ?? 0) + weekTotal;
+  }
+  return hoursMap;
+}
+
+async function checkHours() {
+  try {
+    // Load expected names from the bundled reports.txt
+    const txt       = await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text());
+    const expected  = txt.split('\n').map(n => n.trim()).filter(Boolean);
+
+    const sid = await getSessionId();
+    const ver = window.Salesforce?.settings?.apiVersion ?? 'v59.0';
+
+    if (!sid) throw new Error('Could not read session ID — cannot fetch hours.');
+
+    const hoursMap = await fetchLastWeekHours(sid, ver);
+
+    // Compare each expected name against logged hours
+    const incomplete = [];
+    for (const name of expected) {
+      const logged  = hoursMap[name] ?? 0;
+      const missing = 40 - logged;
+      if (missing > 0) incomplete.push({ name, logged, missing });
+    }
+
+    if (incomplete.length === 0) {
+      log('🎉 Everyone has logged 40 hours. Nothing missing!', '#69F0AE');
+      return;
+    }
+
+    log(`⚠️  ${incomplete.length} person(s) with missing hours:`, '#FFCA28');
+    log('', '');
+    for (const { name, logged, missing } of incomplete) {
+      const bar   = logged === 0 ? '(no hours logged)' : `${logged}h logged`;
+      log(`  • ${name}`, '#FF7043');
+      log(`    ${bar}  →  ${missing}h missing`, '#aaa');
+    }
+
+  } catch (err) {
+    log(`❌ Hours check failed: ${err.message}`, '#FF5252');
+  }
 }
 
 if (!window.__sfApproverRunning) {
