@@ -290,18 +290,21 @@ async function runApproval() {
     }
     log('✓ Grid located.', '#69F0AE');
 
-    // ── 2. Collect approval rows ─────────────────────────────────────────────
-    const rows = Array.from(
+    // ── 2. Snapshot record IDs for batch API lookup ──────────────────────────
+    // We only read IDs now; we re-query the live DOM each iteration because
+    // the grid removes a row after it is approved/rejected.
+    const initialRows = Array.from(
       bryntumRoot.querySelectorAll('.b-grid-row[role="row"][data-id]')
     );
-    if (rows.length === 0) {
+    if (initialRows.length === 0) {
       log('No pending approval rows found. Nothing to do.', '#FFCA28');
       return;
     }
-    log(`Found ${rows.length} row(s). Fetching assignment names via API…`, '#90CAF9');
+    const total     = initialRows.length;
+    const recordIds = initialRows.map(r => r.dataset.id);
+    log(`Found ${total} row(s). Fetching assignment names via API…`, '#90CAF9');
 
     // ── 3. Batch-fetch Assignment names — no page navigation needed ──────────
-    const recordIds = rows.map(r => r.dataset.id);
     let assignMap = {};
     try {
       assignMap = await fetchAssignments(recordIds);
@@ -313,33 +316,33 @@ async function runApproval() {
     }
 
     // ── 4. Process each row ──────────────────────────────────────────────────
-    for (let i = 0; i < rows.length; i++) {
-      const row  = rows[i];
-      const id   = row.dataset.id;
-      const info = assignMap[id] ?? { name: '(not in API result)', isOverhead: false };
+    // After each approval the processed row disappears, so always target the
+    // current FIRST row in the live grid rather than holding stale references.
+    for (let i = 0; i < total; i++) {
+      // Re-query the grid for the current first row
+      const row = bryntumRoot.querySelector('.b-grid-row[role="row"][data-id]');
+      if (!row) { log('No more rows in grid.', '#888'); break; }
+
+      const id    = row.dataset.id;
+      const info  = assignMap[id] ?? { name: '(not in API result)', isOverhead: false };
       const label = row.querySelector('[data-column-id="col-name"] a')?.textContent?.trim() ?? id;
 
       log('', '');
-      log(`── ${i + 1}/${rows.length}: ${label}`, '#90CAF9');
+      log(`── ${i + 1}/${total}: ${label}`, '#90CAF9');
       log(`   Assignment: "${info.name}"`, '#aaa');
 
       try {
-        // Step 1: select the row via its checkbox before touching Approve/Reject
-        const chk = row.querySelector(
-          '[data-column-id="ma_selection-column"] input[type="checkbox"][data-op-ignore="true"]'
-        );
+        // Step 1: click the checkbox on the first row
+        // Selector confirmed: input[type="checkbox"][data-op-ignore="true"] inside the row
+        const chk = row.querySelector('input[type="checkbox"][data-op-ignore="true"]');
         if (chk) {
-          if (!chk.checked) {
-            chk.click();
-            log('   ☑ Checkbox clicked — waiting for SF to enable buttons…', '#888');
-          } else {
-            log('   ☑ Checkbox already selected.', '#888');
-          }
+          if (!chk.checked) chk.click();
+          log('   ☑ Checkbox clicked — waiting for SF to enable buttons…', '#888');
         } else {
           log('   ⚠️  Checkbox not found — falling back to row click.', '#FFCA28');
           row.click();
         }
-        await sleep(2500); // give SF time to register selection and enable Approve/Reject
+        await sleep(2500); // give SF time to register the selection
 
         if (info.isOverhead) {
           // ── Reject ─────────────────────────────────────────────────────
