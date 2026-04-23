@@ -62,27 +62,38 @@ function getMassApprovalRoot() {
   for (const tag of CHAIN_TO_MA) {
     const el = root.querySelector(tag);
     if (!el) return null;
-    root = el.shadowRoot ?? el;
+    root = shadowOrSelf(el);
   }
-  return root; // pse-ma_mass-approval shadow root
+  return root; // pse-ma_mass-approval shadow root (or element if synthetic shadow)
+}
+
+// Some LWC components use Salesforce's synthetic shadow polyfill — shadowRoot is null
+// but children are queryable directly on the element. We handle both cases.
+function shadowOrSelf(el) {
+  return el.shadowRoot ?? el;
 }
 
 function getBryntumRoot(maRoot) {
   const gridHost = maRoot.querySelector('c-ma_mass-approval-grid');
-  if (!gridHost)            return { root: null, error: 'c-ma_mass-approval-grid not found in pse-ma_mass-approval shadow' };
-  if (!gridHost.shadowRoot) return { root: null, error: 'c-ma_mass-approval-grid has no shadowRoot (closed mode?)' };
+  if (!gridHost) return { root: null, error: 'c-ma_mass-approval-grid not found in pse-ma_mass-approval shadow' };
 
-  const widgetHost = gridHost.shadowRoot.querySelector('c-bryntum-widget-host');
-  if (!widgetHost)            return { root: null, error: 'c-bryntum-widget-host not found in c-ma_mass-approval-grid shadow' };
-  if (!widgetHost.shadowRoot) return { root: null, error: 'c-bryntum-widget-host has no shadowRoot (closed mode?)' };
+  const gridContent  = shadowOrSelf(gridHost);
+  const widgetHost   = gridContent.querySelector('c-bryntum-widget-host');
+  if (!widgetHost) return { root: null, error: 'c-bryntum-widget-host not found inside c-ma_mass-approval-grid' };
 
-  return { root: widgetHost.shadowRoot, error: null };
+  const widgetContent = shadowOrSelf(widgetHost);
+  // Confirm the Bryntum grid container is reachable
+  if (!widgetContent.querySelector('.b-gridbase, .b-grid-row')) {
+    return { root: null, error: 'c-bryntum-widget-host found but grid not yet rendered (.b-gridbase missing)' };
+  }
+
+  return { root: widgetContent, error: null };
 }
 
-// Approve/Reject buttons: lightning-button[data-id="…"] → its shadowRoot → button
+// Approve/Reject buttons: lightning-button[data-id="…"] → shadow (or self) → button
 function getLightningBtn(maRoot, dataId) {
   const lb = maRoot.querySelector(`lightning-button[data-id="${dataId}"]`);
-  return lb?.shadowRoot?.querySelector('button') ?? null;
+  return shadowOrSelf(lb)?.querySelector('button') ?? null;
 }
 
 // ── Salesforce REST API — batch-fetch Assignment names ─────────────────────────
@@ -283,9 +294,9 @@ async function runApproval() {
           setNativeValue(textarea, REJECTION_COMMENT);
           await sleep(500);
 
-          // Confirm button: find the lightning-button host, then pierce its shadow for the real button
+          // Confirm button: find the lightning-button host, then pierce its shadow (or self) for the real button
           const confirmHost = deepQuery(document, REJECT_DIALOG.confirmBtnHost);
-          const submitBtn   = confirmHost?.shadowRoot?.querySelector(REJECT_DIALOG.confirmBtnInner);
+          const submitBtn   = shadowOrSelf(confirmHost)?.querySelector(REJECT_DIALOG.confirmBtnInner);
           if (!submitBtn) throw new Error(
             'Reject Timecard button not found in modal. Check REJECT_DIALOG selectors.'
           );
