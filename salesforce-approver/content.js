@@ -15,6 +15,14 @@ function deepQuery(root, selector) {
   return null;
 }
 
+function deepQueryAll(root, selector) {
+  const results = Array.from(root.querySelectorAll(selector));
+  for (const child of root.querySelectorAll('*')) {
+    if (child.shadowRoot) results.push(...deepQueryAll(child.shadowRoot, selector));
+  }
+  return results;
+}
+
 function waitForEl(selector, timeout = 12000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeout;
@@ -184,6 +192,15 @@ function setTitle(t) {
 const REJECTION_COMMENT =
   'Rejected: Overhead assignments are not allowed. Please resubmit with a valid project assignment.';
 
+// Approve modal selectors (confirmed via DevTools inspection)
+// Triggered after clicking the Approve button on the main page.
+// Confirm button has no data-id — identified by variant="brand" → button text "Approve"
+const APPROVE_DIALOG = {
+  modal:          'section.slds-modal[data-modal][aria-modal="true"]',
+  confirmBtnHost: 'lightning-button[variant="brand"]',
+  confirmBtnText: 'Approve',
+};
+
 // Reject modal selectors (confirmed via DevTools inspection)
 // Modal renders in lightning-overlay-container appended to <body> — outside the LWC page tree.
 // deepQuery() pierces all shadow roots recursively, so intermediate hosts are traversed automatically.
@@ -317,11 +334,25 @@ async function runApproval() {
           approveBtn.click();
           await sleep(1500);
 
-          // Handle optional confirm dialog
-          const confirmDlgBtn = deepQuery(document,
-            '[role="dialog"] button[title="Approve"], [role="dialog"] footer button:last-child'
-          );
-          if (confirmDlgBtn) { confirmDlgBtn.click(); await sleep(1500); }
+          // Wait for the Approve Timecard modal to appear, then confirm
+          const modal = await waitForEl(APPROVE_DIALOG.modal, 6000).catch(() => null);
+          if (modal) {
+            // Find lightning-button[variant="brand"] → pierce shadow → button whose text is "Approve"
+            const btnHosts = Array.from(deepQueryAll(document, APPROVE_DIALOG.confirmBtnHost));
+            let confirmBtn = null;
+            for (const host of btnHosts) {
+              const btn = shadowOrSelf(host).querySelector('button');
+              if (btn?.textContent?.trim() === APPROVE_DIALOG.confirmBtnText) {
+                confirmBtn = btn;
+                break;
+              }
+            }
+            if (!confirmBtn) throw new Error(
+              'Approve confirm button not found in modal. Check APPROVE_DIALOG selectors.'
+            );
+            confirmBtn.click();
+            await sleep(2000);
+          }
 
           approved++;
           log('   ✓ Approved.', '#69F0AE');
