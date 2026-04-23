@@ -104,40 +104,16 @@ function getLightningBtn(maRoot, dataId) {
   return shadowOrSelf(lb)?.querySelector('button') ?? null;
 }
 
-// ── Salesforce session ID — read from page context via script injection ────────
-// Content scripts run in an isolated JS world; Salesforce session globals live in
-// the page's main world. We bridge the gap with a temporary <script> tag that
-// reads the session ID and posts it back via window.postMessage.
+// ── Salesforce session ID — read via background service worker ─────────────────
+// Salesforce Lightning's CSP blocks inline <script> injection, so we can't read
+// JS globals from the page context. Instead, the background service worker reads
+// the "sid" cookie directly using chrome.cookies (bypasses CSP entirely).
 
 function getSessionId() {
   return new Promise(resolve => {
-    const MSG = '__sf_approver_sid__';
-
-    const handler = e => {
-      if (e.source === window && e.data?.type === MSG) {
-        window.removeEventListener('message', handler);
-        resolve(e.data.sid ?? '');
-      }
-    };
-    window.addEventListener('message', handler);
-
-    // Runs in the page's main world — has access to Salesforce globals
-    const s = document.createElement('script');
-    s.textContent = `(function(){
-      var sid = '';
-      try {
-        sid = (window.sforce && (sforce.connection?.sessionId || sforce.one?.sessionId))
-           || window.UserContext?.sessionId
-           || window.SFDC?._sessionId
-           || '';
-      } catch(e) {}
-      window.postMessage({ type: '${MSG}', sid: sid }, '*');
-    })();`;
-    document.head.appendChild(s);
-    s.remove();
-
-    // Resolve with empty string after 2 s if no response (will fall back gracefully)
-    setTimeout(() => resolve(''), 2000);
+    chrome.runtime.sendMessage({ action: 'getSessionId' }, response => {
+      resolve(response?.sid ?? '');
+    });
   });
 }
 

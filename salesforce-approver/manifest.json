@@ -3,7 +3,7 @@
   "name": "Salesforce Hours Approver",
   "version": "1.0",
   "description": "One-click approval of Salesforce timecards — rejects overhead, approves the rest, then reports missing hours.",
-  "permissions": ["activeTab", "scripting", "tabs"],
+  "permissions": ["activeTab", "scripting", "tabs", "cookies"],
   "host_permissions": ["https://*.lightning.force.com/*"],
   "action": {
     "default_popup": "popup.html",
