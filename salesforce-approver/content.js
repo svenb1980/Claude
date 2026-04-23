@@ -105,9 +105,9 @@ function getLightningBtn(maRoot, dataId) {
 }
 
 // ── Salesforce session ID — read via background service worker ─────────────────
-// Salesforce Lightning's CSP blocks inline <script> injection, so we can't read
-// JS globals from the page context. Instead, the background service worker reads
-// the "sid" cookie directly using chrome.cookies (bypasses CSP entirely).
+// Salesforce's CSP blocks extension content scripts from reading page JS globals.
+// We delegate to background.js which runs executeScript in world:'MAIN', giving
+// it direct access to window.sforce / window.UserContext on the same tab.
 
 function getSessionId() {
   return new Promise(resolve => {
