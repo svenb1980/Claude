@@ -68,9 +68,15 @@ function getMassApprovalRoot() {
 }
 
 function getBryntumRoot(maRoot) {
-  const gridHost   = maRoot.querySelector('c-ma_mass-approval-grid');
-  const widgetHost = gridHost?.shadowRoot?.querySelector('c-bryntum-widget-host');
-  return widgetHost?.shadowRoot ?? null;
+  const gridHost = maRoot.querySelector('c-ma_mass-approval-grid');
+  if (!gridHost)            return { root: null, error: 'c-ma_mass-approval-grid not found in pse-ma_mass-approval shadow' };
+  if (!gridHost.shadowRoot) return { root: null, error: 'c-ma_mass-approval-grid has no shadowRoot (closed mode?)' };
+
+  const widgetHost = gridHost.shadowRoot.querySelector('c-bryntum-widget-host');
+  if (!widgetHost)            return { root: null, error: 'c-bryntum-widget-host not found in c-ma_mass-approval-grid shadow' };
+  if (!widgetHost.shadowRoot) return { root: null, error: 'c-bryntum-widget-host has no shadowRoot (closed mode?)' };
+
+  return { root: widgetHost.shadowRoot, error: null };
 }
 
 // Approve/Reject buttons: lightning-button[data-id="…"] → its shadowRoot → button
@@ -184,7 +190,7 @@ const REJECT_DIALOG = {
 
 async function runApproval() {
   createOverlay();
-  await sleep(2500);
+  await sleep(4000);
 
   let approved = 0, rejected = 0, errors = 0;
 
@@ -198,9 +204,18 @@ async function runApproval() {
       return;
     }
 
-    const bryntumRoot = getBryntumRoot(maRoot);
+    // Retry up to 4 times — the Bryntum grid can take a few seconds to render
+    let bryntumRoot = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const { root, error } = getBryntumRoot(maRoot);
+      if (root) { bryntumRoot = root; break; }
+      log(`   Attempt ${attempt}/4 — ${error}`, '#888');
+      log(`   Waiting 2 s for grid to finish rendering…`, '#555');
+      await sleep(2000);
+    }
     if (!bryntumRoot) {
-      log('❌ Could not reach c-bryntum-widget-host shadow root.', '#FF5252');
+      log('❌ Could not reach Bryntum grid after 4 attempts.', '#FF5252');
+      log('   Check that the Mass Approval page is fully loaded before clicking the button.', '#888');
       return;
     }
     log('✓ Grid located.', '#69F0AE');
