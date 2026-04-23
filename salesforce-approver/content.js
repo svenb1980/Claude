@@ -104,48 +104,44 @@ function getLightningBtn(maRoot, dataId) {
   return shadowOrSelf(lb)?.querySelector('button') ?? null;
 }
 
-// ── Salesforce session ID — read via background service worker ─────────────────
-// Salesforce's CSP blocks extension content scripts from reading page JS globals.
-// We delegate to background.js which runs executeScript in world:'MAIN', giving
-// it direct access to window.sforce / window.UserContext on the same tab.
+// ── Salesforce REST API helpers ────────────────────────────────────────────────
+// Content scripts run on the Salesforce origin, so the browser automatically
+// attaches the sid cookie to same-origin fetch() calls.
+// X-Requested-With prevents Salesforce from treating it as a CSRF attempt.
 
-function getSessionId() {
-  return new Promise(resolve => {
-    chrome.runtime.sendMessage({ action: 'getSessionId' }, response => {
-      resolve(response?.sid ?? '');
-    });
-  });
+const SF_HEADERS = {
+  'X-Requested-With': 'XMLHttpRequest',
+  'Accept':           'application/json',
+};
+
+// Try to read the API version the page uses; fall back to v59.0
+function apiVer() {
+  return window.Salesforce?.settings?.apiVersion ?? 'v59.0';
 }
 
-// ── Salesforce REST API — batch-fetch Assignment names ─────────────────────────
+async function sfFetch(soql) {
+  const res = await fetch(
+    `/services/data/${apiVer()}/query/?q=${encodeURIComponent(soql)}`,
+    { headers: SF_HEADERS }
+  );
+  if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
+
+// ── Batch-fetch Assignment names ───────────────────────────────────────────────
 
 async function fetchAssignments(recordIds) {
-  const sid = await getSessionId();
-  if (!sid) throw new Error('Could not read Salesforce session ID from page context');
-
-  // Try to read the API version the page already uses; fall back to v59.0
-  const ver = window.Salesforce?.settings?.apiVersion ?? 'v59.0';
-
   const idList = recordIds.map(id => `'${id}'`).join(',');
   const soql   = `SELECT Id, pse__Assignment__r.Name `
                + `FROM pse__Timecard_Header__c `
                + `WHERE Id IN (${idList})`;
 
   const res = await fetch(
-    `/services/data/${ver}/query/?q=${encodeURIComponent(soql)}`,
-    {
-      headers: {
-        'Authorization':    `Bearer ${sid}`,
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept':           'application/json',
-      },
-    }
+    `/services/data/${apiVer()}/query/?q=${encodeURIComponent(soql)}`,
+    { headers: SF_HEADERS }
   );
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`REST API ${res.status}: ${text.slice(0, 200)}`);
-  }
+  if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 200)}`);
 
   const data = await res.json();
   const map  = {};
@@ -425,8 +421,7 @@ async function runApproval() {
 
 // ── Last-week hours check ──────────────────────────────────────────────────────
 
-async function fetchLastWeekHours(sid, ver) {
-  // One row per timecard; a person may have multiple timecards (different projects)
+async function fetchLastWeekHours() {
   const soql = [
     'SELECT pse__Resource__r.Name,',
     '  pse__Monday_Hours__c, pse__Tuesday_Hours__c, pse__Wednesday_Hours__c,',
@@ -436,18 +431,16 @@ async function fetchLastWeekHours(sid, ver) {
     'WHERE pse__Week_Start_Date__c = LAST_WEEK',
   ].join(' ');
 
-  let url = `/services/data/${ver}/query/?q=${encodeURIComponent(soql)}`;
+  let url = `/services/data/${apiVer()}/query/?q=${encodeURIComponent(soql)}`;
   const allRecords = [];
 
   // Follow pagination (Salesforce returns max 2000 rows per page)
   while (url) {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${sid}`, Accept: 'application/json' },
-    });
+    const res = await fetch(url, { headers: SF_HEADERS });
     if (!res.ok) throw new Error(`Hours API ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
     allRecords.push(...(data.records ?? []));
-    url = data.nextRecordsUrl ? data.nextRecordsUrl : null;
+    url = data.nextRecordsUrl ?? null;
   }
 
   // Sum hours per person across all their timecards
@@ -469,16 +462,10 @@ async function fetchLastWeekHours(sid, ver) {
 
 async function checkHours() {
   try {
-    // Load expected names from the bundled reports.txt
-    const txt       = await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text());
-    const expected  = txt.split('\n').map(n => n.trim()).filter(Boolean);
+    const txt      = await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text());
+    const expected = txt.split('\n').map(n => n.trim()).filter(Boolean);
 
-    const sid = await getSessionId();
-    const ver = window.Salesforce?.settings?.apiVersion ?? 'v59.0';
-
-    if (!sid) throw new Error('Could not read session ID — cannot fetch hours.');
-
-    const hoursMap = await fetchLastWeekHours(sid, ver);
+    const hoursMap = await fetchLastWeekHours();
 
     // Compare each expected name against logged hours
     const incomplete = [];
@@ -507,35 +494,11 @@ async function checkHours() {
 }
 
 async function openHoursReport() {
-  const REPORT_NAME = 'Sven - ALL hours last week';
-  try {
-    log('', '');
-    log(`🔗 Opening "${REPORT_NAME}"…`, '#888');
-
-    const sid = await getSessionId();
-    const ver = window.Salesforce?.settings?.apiVersion ?? 'v59.0';
-    if (!sid) throw new Error('No session ID — cannot look up report URL.');
-
-    // Find the report ID by name via SOQL (Report is queryable in Salesforce)
-    const soql = `SELECT Id FROM Report WHERE Name = '${REPORT_NAME}'`;
-    const res  = await fetch(
-      `/services/data/${ver}/query/?q=${encodeURIComponent(soql)}`,
-      { headers: { Authorization: `Bearer ${sid}`, Accept: 'application/json' } }
-    );
-    if (!res.ok) throw new Error(`Report lookup API ${res.status}`);
-
-    const data = await res.json();
-    if (!data.records?.length) throw new Error(`Report "${REPORT_NAME}" not found in Salesforce.`);
-
-    const reportId = data.records[0].Id;
-    const url      = `https://planonsoftware.lightning.force.com/lightning/r/${reportId}/view`;
-
-    // Ask background service worker to open the tab (avoids popup blockers)
-    chrome.runtime.sendMessage({ action: 'openTab', url });
-    log('✓ Report tab opened.', '#69F0AE');
-  } catch (err) {
-    log(`⚠️  Could not open report: ${err.message}`, '#FFCA28');
-  }
+  const REPORT_URL = 'https://planonsoftware.lightning.force.com/lightning/r/Report/00OQu000005z8FVMAY/view';
+  log('', '');
+  log('🔗 Opening "Sven - ALL hours last week"…', '#888');
+  chrome.runtime.sendMessage({ action: 'openTab', url: REPORT_URL });
+  log('✓ Report tab opened.', '#69F0AE');
 }
 
 if (!window.__sfApproverRunning) {
