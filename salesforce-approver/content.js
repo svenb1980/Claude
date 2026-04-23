@@ -494,11 +494,39 @@ async function checkHours() {
 }
 
 async function openHoursReport() {
-  const REPORT_URL = 'https://planonsoftware.lightning.force.com/lightning/r/Report/00OQu000005z8FVMAY/view';
+  const DATA_ID  = '0QkQu0000004jjJKAQ';
+  const FALLBACK = '/lightning/r/Report/00OQu000005z8FVMAY/view';
+
   log('', '');
-  log('🔗 Opening "Sven - ALL hours last week"…', '#888');
-  chrome.runtime.sendMessage({ action: 'openTab', url: REPORT_URL });
-  log('✓ Report tab opened.', '#69F0AE');
+  log('🔗 Navigating to "Sven - ALL hours last week"…', '#888');
+
+  const appNav = document.querySelector('one-appnav');
+  const navBar = appNav?.shadowRoot?.querySelector('one-app-nav-bar');
+  const sr     = navBar?.shadowRoot;
+
+  if (sr) {
+    // Try the visible nav bar item first
+    const navItem = sr.querySelector(`one-app-nav-bar-item-root[data-id="${DATA_ID}"]`);
+    const navLink = navItem?.shadowRoot?.querySelector('a');
+    if (navLink && !navItem.classList.contains('hidden')) {
+      navLink.click();
+      log('✓ Clicked nav bar tab.', '#69F0AE');
+      return;
+    }
+
+    // Fall back to the overflow ("More") menu item
+    const menuItem = sr.querySelector(`one-app-nav-bar-menu-item[data-id="${DATA_ID}"]`);
+    const menuLink = menuItem?.shadowRoot?.querySelector('a');
+    if (menuLink) {
+      menuLink.click();
+      log('✓ Clicked overflow menu tab.', '#69F0AE');
+      return;
+    }
+  }
+
+  // Last resort: in-page navigation (avoids full page reload vs. new tab)
+  log('⚠️  Nav tab not found — using in-page navigation.', '#FFCA28');
+  window.location.href = FALLBACK;
 }
 
 if (!window.__sfApproverRunning) {
