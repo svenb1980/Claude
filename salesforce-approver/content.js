@@ -2,7 +2,7 @@
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Generic recursive shadow DOM query (used for detail pages)
+// Generic recursive shadow DOM piercer (used for modals / unknown depths)
 function deepQuery(root, selector) {
   const el = root.querySelector(selector);
   if (el) return el;
@@ -15,7 +15,6 @@ function deepQuery(root, selector) {
   return null;
 }
 
-// Wait for a selector to appear anywhere in the document (including shadow DOM)
 function waitForEl(selector, timeout = 12000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeout;
@@ -30,7 +29,7 @@ function waitForEl(selector, timeout = 12000) {
   });
 }
 
-// Trigger LWC-compatible value change (plain .value = x is ignored by framework)
+// Trigger LWC-aware value update (plain .value = x is silently ignored)
 function setNativeValue(el, value) {
   const proto = el.tagName === 'TEXTAREA'
     ? window.HTMLTextAreaElement.prototype
@@ -40,127 +39,112 @@ function setNativeValue(el, value) {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-// ── Bryntum Grid: shadow DOM traversal ────────────────────────────────────────
+// ── Known Shadow DOM Traversal ─────────────────────────────────────────────────
 //
-// The grid lives 6 shadow roots deep. All are open mode, so we can traverse.
-// Chain: document
-//   → app_flexipage-lwc-app-flexipage            (shadow)
-//   → app_flexipage-lwc-app-flexipage-internal   (shadow)
-//   → forcegenerated-flexipage_mass_approval_lightning_component__js (shadow)
-//   → pse-ma_mass-approval                       (shadow)
-//   → c-ma_mass-approval-grid                    (shadow)
-//   → c-bryntum-widget-host                      (shadow) ← grid lives here
+// Mass Approval page shadow chain (confirmed via DevTools):
+//   document
+//   → app_flexipage-lwc-app-flexipage                                  (shadow)
+//   → app_flexipage-lwc-app-flexipage-internal                         (shadow)
+//   → forcegenerated-flexipage_mass_approval_lightning_component__js   (shadow)
+//   → pse-ma_mass-approval                                             (shadow) ← buttons live here
+//   → c-ma_mass-approval-grid                                          (shadow)
+//   → c-bryntum-widget-host                                            (shadow) ← grid rows live here
 
-const SHADOW_CHAIN = [
+const CHAIN_TO_MA = [
   'app_flexipage-lwc-app-flexipage',
   'app_flexipage-lwc-app-flexipage-internal',
   'forcegenerated-flexipage_mass_approval_lightning_component__js',
   'pse-ma_mass-approval',
-  'c-ma_mass-approval-grid',
-  'c-bryntum-widget-host',
 ];
 
-function getBryntumRoot() {
+function getMassApprovalRoot() {
   let root = document;
-  for (const tag of SHADOW_CHAIN) {
+  for (const tag of CHAIN_TO_MA) {
     const el = root.querySelector(tag);
     if (!el) return null;
     root = el.shadowRoot ?? el;
   }
-  return root;
+  return root; // pse-ma_mass-approval shadow root
 }
 
-// ── Grid selectors (inside c-bryntum-widget-host shadow root) ─────────────────
+function getBryntumRoot(maRoot) {
+  const gridHost   = maRoot.querySelector('c-ma_mass-approval-grid');
+  const widgetHost = gridHost?.shadowRoot?.querySelector('c-bryntum-widget-host');
+  return widgetHost?.shadowRoot ?? null;
+}
 
-const GRID = {
-  // Confirm grid is loaded
-  container: '.b-gridbase, #b-grid-2',
-  // Each approval row
-  row:       '.b-grid-row[role="row"][data-id]',
-  // Link to the timecard record inside a row
-  rowLink:   '[data-column-id="col-name"] a[href*="/lightning/r/"]',
-};
+// Approve/Reject buttons: lightning-button[data-id="…"] → its shadowRoot → button
+function getLightningBtn(maRoot, dataId) {
+  const lb = maRoot.querySelector(`lightning-button[data-id="${dataId}"]`);
+  return lb?.shadowRoot?.querySelector('button') ?? null;
+}
 
-// ── Detail page selectors (standard SF Lightning record page) ─────────────────
-// ⚠️  If any of these don't match, inspect the timecard detail page in DevTools
-//    and update the selector. The key ones are: assignmentField, approveBtn, rejectBtn.
+// ── Salesforce REST API — batch-fetch Assignment names ─────────────────────────
+// Runs entirely on-domain so existing session cookies authenticate the request.
+// No page navigation needed.
 
-const SEL = {
-  // Assignment field — try these in order; first match wins
-  assignmentField: [
-    '[data-field="Assignment__c"]',
-    '[data-label="Assignment"]',
-    '.assignment-field',
-    'records-hoverable-link[data-field-name="Assignment__c"]',
-    '[field-name="Assignment__c"]',
-  ].join(', '),
+async function fetchAssignments(recordIds) {
+  // Try to read the API version the page already uses; fall back to v59.0
+  const ver = window.Salesforce?.settings?.apiVersion
+    ?? document.querySelector('script[src*="/api/v"]')?.src?.match(/\/v(\d+\.\d+)\//)?.[1]?.replace(/^/, 'v')
+    ?? 'v59.0';
 
-  // Approve/Reject buttons on the record page (highlights panel or action bar)
-  approveBtn: [
-    'button[title="Approve"]',
-    'button[name="approve"]',
-    'button[label="Approve"]',
-    'a[title="Approve"]',
-  ].join(', '),
+  const idList = recordIds.map(id => `'${id}'`).join(',');
+  const soql   = `SELECT Id, pse__Assignment__r.Name `
+               + `FROM pse__Timecard_Header__c `
+               + `WHERE Id IN (${idList})`;
 
-  rejectBtn: [
-    'button[title="Reject"]',
-    'button[name="reject"]',
-    'button[label="Reject"]',
-    'a[title="Reject"]',
-  ].join(', '),
+  const res = await fetch(
+    `/services/data/${ver}/query/?q=${encodeURIComponent(soql)}`,
+    { headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } }
+  );
 
-  // Comment textarea inside the reject modal
-  commentArea: 'lightning-textarea textarea, [role="dialog"] textarea, textarea[placeholder]',
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`REST API ${res.status}: ${text.slice(0, 200)}`);
+  }
 
-  // Submit button inside reject modal
-  confirmBtn: [
-    '[role="dialog"] button[title="Submit"]',
-    '[role="dialog"] button[title="Confirm"]',
-    '[role="dialog"] footer button:last-child',
-    'button[title="Submit"]',
-  ].join(', '),
+  const data = await res.json();
+  const map  = {};
+  for (const rec of data.records) {
+    const name = rec.pse__Assignment__r?.Name ?? '';
+    map[rec.Id] = { name, isOverhead: /overhead/i.test(name) };
+  }
+  return map;
+}
 
-  // Confirm for approve (some flows show a confirmation dialog)
-  approveConfirm: [
-    '[role="dialog"] button[title="Approve"]',
-    '[role="dialog"] footer button:last-child',
-  ].join(', '),
-};
-
-// ── Status Overlay ─────────────────────────────────────────────────────────────
+// ── Overlay ────────────────────────────────────────────────────────────────────
 
 let overlay, logEl;
 
 function createOverlay() {
   document.getElementById('__sf-approver-overlay')?.remove();
-
   overlay = document.createElement('div');
   overlay.id = '__sf-approver-overlay';
   overlay.style.cssText = [
-    'position:fixed', 'top:16px', 'right:16px', 'z-index:2147483647',
-    'background:#0f1b0f', 'color:#ccc', 'font:13px/1.6 monospace',
-    'border-radius:10px', 'padding:16px 20px', 'width:420px',
-    'box-shadow:0 8px 32px rgba(0,0,0,.7)', 'border:1px solid #2a4a2a',
-    'max-height:78vh', 'overflow-y:auto',
+    'position:fixed','top:16px','right:16px','z-index:2147483647',
+    'background:#0f1b0f','color:#ccc','font:13px/1.6 monospace',
+    'border-radius:10px','padding:16px 20px','width:420px',
+    'box-shadow:0 8px 32px rgba(0,0,0,.7)','border:1px solid #2a4a2a',
+    'max-height:78vh','overflow-y:auto',
   ].join(';');
 
-  const header = document.createElement('div');
-  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
+  const hdr   = document.createElement('div');
+  hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px';
 
   const title = document.createElement('span');
-  title.id = '__sf-approver-title';
+  title.id    = '__sf-approver-title';
   title.style.cssText = 'font-size:14px;font-weight:700;color:#69F0AE';
-  title.textContent = '⏱ Hours Approver — running…';
+  title.textContent   = '⏱ Hours Approver — running…';
 
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕';
-  closeBtn.style.cssText = 'background:none;border:none;color:#666;cursor:pointer;font-size:14px;padding:0 4px';
-  closeBtn.onclick = () => overlay.remove();
+  const x = document.createElement('button');
+  x.textContent   = '✕';
+  x.style.cssText = 'background:none;border:none;color:#666;cursor:pointer;font-size:14px;padding:0 4px';
+  x.onclick       = () => overlay.remove();
 
-  header.append(title, closeBtn);
   logEl = document.createElement('div');
-  overlay.append(header, logEl);
+  hdr.append(title, x);
+  overlay.append(hdr, logEl);
   document.body.appendChild(overlay);
 }
 
@@ -168,141 +152,149 @@ function log(msg, color = '#ccc') {
   if (!logEl) return;
   const line = document.createElement('div');
   line.style.cssText = `color:${color};margin-bottom:2px;word-break:break-word`;
-  line.textContent = msg;
+  line.textContent   = msg;
   logEl.appendChild(line);
-  overlay.scrollTop = overlay.scrollHeight;
+  overlay.scrollTop  = overlay.scrollHeight;
 }
 
-function setOverlayTitle(text) {
-  const t = document.getElementById('__sf-approver-title');
-  if (t) t.textContent = text;
+function setTitle(t) {
+  const el = document.getElementById('__sf-approver-title');
+  if (el) el.textContent = t;
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const REJECTION_COMMENT =
   'Rejected: Overhead assignments are not allowed. Please resubmit with a valid project assignment.';
 
+// ⚠️  Only update if the reject confirmation dialog structure changes
+const REJECT_DIALOG = {
+  commentArea: 'lightning-textarea textarea, [role="dialog"] textarea',
+  submitBtn:   '[role="dialog"] button[title="Submit"], [role="dialog"] footer button:last-child',
+};
+
+// ── Main ───────────────────────────────────────────────────────────────────────
+
 async function runApproval() {
   createOverlay();
-  log('Waiting for grid to load…', '#666');
-  await sleep(3000);
+  await sleep(2500);
 
   let approved = 0, rejected = 0, errors = 0;
 
   try {
-    // ── Locate the Bryntum grid ──────────────────────────────────────────────
-    const bryntumRoot = getBryntumRoot();
+    // ── 1. Locate shadow roots ───────────────────────────────────────────────
+    log('Locating Mass Approval component…', '#666');
+    const maRoot = getMassApprovalRoot();
+    if (!maRoot) {
+      log('❌ Could not reach pse-ma_mass-approval shadow root.', '#FF5252');
+      log('   Verify CHAIN_TO_MA in content.js matches the current page.', '#888');
+      return;
+    }
 
+    const bryntumRoot = getBryntumRoot(maRoot);
     if (!bryntumRoot) {
-      log('❌ Could not find the Bryntum grid shadow root.', '#FF5252');
-      log('   The LWC shadow chain may have changed. Check SHADOW_CHAIN in content.js.', '#888');
+      log('❌ Could not reach c-bryntum-widget-host shadow root.', '#FF5252');
       return;
     }
+    log('✓ Grid located.', '#69F0AE');
 
-    const gridEl = bryntumRoot.querySelector(GRID.container);
-    if (!gridEl) {
-      log('❌ Grid container not found inside c-bryntum-widget-host.', '#FF5252');
-      log('   Expected selector: ' + GRID.container, '#888');
-      return;
-    }
-
-    log('✓ Grid found.', '#69F0AE');
-
-    // ── Collect all rows ─────────────────────────────────────────────────────
-    let rows = Array.from(bryntumRoot.querySelectorAll(GRID.row));
-    log(`Found ${rows.length} approval row(s).`, '#90CAF9');
-
+    // ── 2. Collect approval rows ─────────────────────────────────────────────
+    const rows = Array.from(
+      bryntumRoot.querySelectorAll('.b-grid-row[role="row"][data-id]')
+    );
     if (rows.length === 0) {
-      log('', '');
-      log('⚠️  No rows found inside the grid.', '#FFCA28');
-      log('   If approvals are present, check GRID.row in content.js.', '#888');
-      log('   Current selector: ' + GRID.row, '#555');
+      log('No pending approval rows found. Nothing to do.', '#FFCA28');
       return;
     }
+    log(`Found ${rows.length} row(s). Fetching assignment names via API…`, '#90CAF9');
 
-    // Collect record IDs and links upfront (DOM may change after navigation)
-    const items = rows.map(row => {
-      const link = row.querySelector(GRID.rowLink);
-      return {
-        id:   row.dataset.id,
-        href: link?.href,
-        name: link?.textContent?.trim() ?? row.dataset.id,
-      };
-    }).filter(item => item.href);
+    // ── 3. Batch-fetch Assignment names — no page navigation needed ──────────
+    const recordIds = rows.map(r => r.dataset.id);
+    let assignMap = {};
+    try {
+      assignMap = await fetchAssignments(recordIds);
+      log(`✓ Assignment data ready (${Object.keys(assignMap).length} records).`, '#69F0AE');
+    } catch (apiErr) {
+      log(`⚠️  API error: ${apiErr.message}`, '#FFCA28');
+      log('   Treating all assignments as non-overhead (safe fallback).', '#888');
+      for (const id of recordIds) assignMap[id] = { name: '(unknown)', isOverhead: false };
+    }
 
-    log(`Processing ${items.length} timecard(s)…`, '#aaa');
+    // ── 4. Process each row ──────────────────────────────────────────────────
+    for (let i = 0; i < rows.length; i++) {
+      const row  = rows[i];
+      const id   = row.dataset.id;
+      const info = assignMap[id] ?? { name: '(not in API result)', isOverhead: false };
+      const label = row.querySelector('[data-column-id="col-name"] a')?.textContent?.trim() ?? id;
 
-    // ── Process each timecard ────────────────────────────────────────────────
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
       log('', '');
-      log(`── ${i + 1}/${items.length}: ${item.name}`, '#90CAF9');
+      log(`── ${i + 1}/${rows.length}: ${label}`, '#90CAF9');
+      log(`   Assignment: "${info.name}"`, '#aaa');
 
       try {
-        // Navigate to the timecard detail page
-        window.location.href = item.href;
-        await sleep(4000); // wait for page load + LWC boot
+        // Select this row via its checkbox (Primary Approval column)
+        const chk = row.querySelector('[data-column-id="ma_selection-column"] input[type="checkbox"]')
+                 ?? row.querySelector('input[type="checkbox"]');
+        if (chk) {
+          if (!chk.checked) chk.click();
+        } else {
+          row.click(); // fallback: click the row itself
+        }
+        await sleep(700);
 
-        // Read Assignment field
-        const assignEl = deepQuery(document, SEL.assignmentField);
-        const assignText = (assignEl?.textContent || assignEl?.value || '').trim();
-        log(`   Assignment: "${assignText || '(field not found — check SEL.assignmentField)'}"`,
-          assignEl ? '#ccc' : '#FFCA28');
+        if (info.isOverhead) {
+          // ── Reject ─────────────────────────────────────────────────────
+          log('   🚫 Overhead detected — rejecting…', '#FF7043');
 
-        const isOverhead = /overhead/i.test(assignText);
-
-        if (isOverhead) {
-          // ── Reject ──────────────────────────────────────────────────────
-          log('   🚫 Overhead — rejecting…', '#FF7043');
-
-          const rejectBtn = deepQuery(document, SEL.rejectBtn);
-          if (!rejectBtn) throw new Error('Reject button not found. Check SEL.rejectBtn.');
+          const rejectBtn = getLightningBtn(maRoot, 'reject');
+          if (!rejectBtn) throw new Error(
+            'Reject button not found. Check: lightning-button[data-id="reject"] in pse-ma_mass-approval shadow.'
+          );
           rejectBtn.click();
           await sleep(1500);
 
-          const textarea = await waitForEl(SEL.commentArea, 8000);
+          // Fill in comment and submit
+          const textarea = await waitForEl(REJECT_DIALOG.commentArea, 8000);
           textarea.focus();
           setNativeValue(textarea, REJECTION_COMMENT);
           await sleep(500);
 
-          const confirmBtn = deepQuery(document, SEL.confirmBtn);
-          if (!confirmBtn) throw new Error('Submit button not found in reject dialog. Check SEL.confirmBtn.');
-          confirmBtn.click();
+          const submitBtn = deepQuery(document, REJECT_DIALOG.submitBtn);
+          if (!submitBtn) throw new Error(
+            'Submit button not found in reject dialog. Check REJECT_DIALOG.submitBtn.'
+          );
+          submitBtn.click();
           await sleep(2500);
 
           rejected++;
           log('   ✓ Rejected.', '#FF7043');
 
         } else {
-          // ── Approve ─────────────────────────────────────────────────────
+          // ── Approve ────────────────────────────────────────────────────
           log('   ✅ Approving…', '#69F0AE');
 
-          const approveBtn = deepQuery(document, SEL.approveBtn);
-          if (!approveBtn) throw new Error('Approve button not found. Check SEL.approveBtn.');
+          const approveBtn = getLightningBtn(maRoot, 'approve');
+          if (!approveBtn) throw new Error(
+            'Approve button not found. Check: lightning-button[data-id="approve"] in pse-ma_mass-approval shadow.'
+          );
           approveBtn.click();
           await sleep(1500);
 
-          // Confirm dialog (not always present)
-          const confirmBtn = deepQuery(document, SEL.approveConfirm);
-          if (confirmBtn) { confirmBtn.click(); await sleep(1500); }
+          // Handle optional confirm dialog
+          const confirmDlgBtn = deepQuery(document,
+            '[role="dialog"] button[title="Approve"], [role="dialog"] footer button:last-child'
+          );
+          if (confirmDlgBtn) { confirmDlgBtn.click(); await sleep(1500); }
 
           approved++;
           log('   ✓ Approved.', '#69F0AE');
         }
 
-        // Navigate back to the Mass Approval list for the next row
-        window.location.href =
-          'https://planonsoftware.lightning.force.com/lightning/n/Mass_Approval_Lightning_Component';
-        await sleep(4000);
+        await sleep(800);
 
       } catch (err) {
         log(`   ❌ ${err.message}`, '#FF5252');
         errors++;
-        // Best-effort: return to list
-        window.location.href =
-          'https://planonsoftware.lightning.force.com/lightning/n/Mass_Approval_Lightning_Component';
-        await sleep(4000);
       }
     }
 
@@ -310,14 +302,14 @@ async function runApproval() {
     log(`\n❌ Fatal: ${err.message}`, '#FF5252');
   }
 
-  // ── Summary ──────────────────────────────────────────────────────────────
+  // ── Summary ────────────────────────────────────────────────────────────────
   log('', '');
   log('────────────────────────────────────', '#2a4a2a');
   log(`✅ Approved : ${approved}`, '#69F0AE');
   log(`🚫 Rejected : ${rejected}`, '#FF7043');
-  if (errors) log(`⚠️  Errors   : ${errors}  (check log above)`, '#FFCA28');
-  log('Done. Overlay closes in 15 seconds.', '#555');
-  setOverlayTitle('⏱ Hours Approver — done');
+  if (errors) log(`⚠️  Errors   : ${errors}  (see log above)`, '#FFCA28');
+  log('Overlay closes in 15 s.', '#555');
+  setTitle('⏱ Hours Approver — done');
   setTimeout(() => overlay?.remove(), 15000);
 }
 
