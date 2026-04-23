@@ -400,7 +400,7 @@ async function runApproval() {
           log('   ✓ Approved.', '#69F0AE');
         }
 
-        await sleep(800);
+        await sleep(10000); // wait for SF to process and grid to refresh before next row
 
       } catch (err) {
         log(`   ❌ ${err.message}`, '#FF5252');
