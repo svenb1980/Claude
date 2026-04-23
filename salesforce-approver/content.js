@@ -324,17 +324,22 @@ async function runApproval() {
       log(`   Assignment: "${info.name}"`, '#aaa');
 
       try {
-        // Select this row via its checkbox (data-op-ignore="true" is the stable selector;
-        // the id/name attributes are dynamic session values and must not be used)
+        // Step 1: select the row via its checkbox before touching Approve/Reject
         const chk = row.querySelector(
           '[data-column-id="ma_selection-column"] input[type="checkbox"][data-op-ignore="true"]'
         );
         if (chk) {
-          if (!chk.checked) chk.click();
+          if (!chk.checked) {
+            chk.click();
+            log('   ☑ Checkbox clicked — waiting for SF to enable buttons…', '#888');
+          } else {
+            log('   ☑ Checkbox already selected.', '#888');
+          }
         } else {
-          row.click(); // fallback: click the row itself
+          log('   ⚠️  Checkbox not found — falling back to row click.', '#FFCA28');
+          row.click();
         }
-        await sleep(700);
+        await sleep(2500); // give SF time to register selection and enable Approve/Reject
 
         if (info.isOverhead) {
           // ── Reject ─────────────────────────────────────────────────────
@@ -400,7 +405,7 @@ async function runApproval() {
           log('   ✓ Approved.', '#69F0AE');
         }
 
-        await sleep(10000); // wait for SF to process and grid to refresh before next row
+        await sleep(7000); // wait for SF to process and grid to refresh before next row
 
       } catch (err) {
         log(`   ❌ ${err.message}`, '#FF5252');
