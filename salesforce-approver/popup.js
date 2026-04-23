@@ -14,13 +14,14 @@ btn.addEventListener('click', async () => {
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const onTarget = tab.url && tab.url.startsWith('https://planonsoftware.lightning.force.com');
+    const onTarget = tab.url && tab.url.includes('Mass_Approval_Lightning_Component');
 
     if (!onTarget) {
-      // Navigate the current tab to the Mass Approval page
+      // Navigate to the Mass Approval page (works from any tab, including other SF pages)
+      setStatus('Navigating to Mass Approval…');
       await chrome.tabs.update(tab.id, { url: TARGET_URL });
 
-      // Wait for the tab to finish loading before injecting
+      // Wait for the tab to finish loading
       await new Promise(resolve => {
         chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
           if (tabId === tab.id && info.status === 'complete') {
@@ -30,8 +31,8 @@ btn.addEventListener('click', async () => {
         });
       });
 
-      // Extra wait for Lightning framework to boot
-      await new Promise(r => setTimeout(r, 3000));
+      // Extra wait for Lightning framework and LWC components to boot
+      await new Promise(r => setTimeout(r, 4000));
     }
 
     setStatus('Running automation…');
