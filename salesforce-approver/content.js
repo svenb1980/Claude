@@ -296,23 +296,26 @@ async function runApproval() {
     const initialRows = Array.from(
       bryntumRoot.querySelectorAll('.b-grid-row[role="row"][data-id]')
     );
-    if (initialRows.length === 0) {
-      log('No pending approval rows found. Nothing to do.', '#FFCA28');
-      return;
-    }
     const total     = initialRows.length;
     const recordIds = initialRows.map(r => r.dataset.id);
-    log(`Found ${total} row(s). Fetching assignment names via API…`, '#90CAF9');
 
-    // ── 3. Batch-fetch Assignment names — no page navigation needed ──────────
+    if (total === 0) {
+      log('No pending approval rows — skipping to hours check.', '#FFCA28');
+    } else {
+      log(`Found ${total} row(s). Fetching assignment names via API…`, '#90CAF9');
+    }
+
+    // ── 3 & 4. Batch-fetch + process rows (only if there are any) ────────────
     let assignMap = {};
-    try {
-      assignMap = await fetchAssignments(recordIds);
-      log(`✓ Assignment data ready (${Object.keys(assignMap).length} records).`, '#69F0AE');
-    } catch (apiErr) {
-      log(`⚠️  API error: ${apiErr.message}`, '#FFCA28');
-      log('   Treating all assignments as non-overhead (safe fallback).', '#888');
-      for (const id of recordIds) assignMap[id] = { name: '(unknown)', isOverhead: false };
+    if (total > 0) {
+      try {
+        assignMap = await fetchAssignments(recordIds);
+        log(`✓ Assignment data ready (${Object.keys(assignMap).length} records).`, '#69F0AE');
+      } catch (apiErr) {
+        log(`⚠️  API error: ${apiErr.message}`, '#FFCA28');
+        log('   Treating all assignments as non-overhead (safe fallback).', '#888');
+        for (const id of recordIds) assignMap[id] = { name: '(unknown)', isOverhead: false };
+      }
     }
 
     // ── 4. Process each row ──────────────────────────────────────────────────
