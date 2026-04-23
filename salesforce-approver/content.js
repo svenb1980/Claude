@@ -167,10 +167,17 @@ function setTitle(t) {
 const REJECTION_COMMENT =
   'Rejected: Overhead assignments are not allowed. Please resubmit with a valid project assignment.';
 
-// ⚠️  Only update if the reject confirmation dialog structure changes
+// Reject modal selectors (confirmed via DevTools inspection)
+// Modal renders in lightning-overlay-container appended to <body> — outside the LWC page tree.
+// deepQuery() pierces all shadow roots recursively, so intermediate hosts are traversed automatically.
+// The confirm button lives one shadow root deeper than deepQuery reaches, so we do the final
+// pierce manually via .shadowRoot.querySelector() after finding the lightning-button host.
 const REJECT_DIALOG = {
-  commentArea: 'lightning-textarea textarea, [role="dialog"] textarea',
-  submitBtn:   '[role="dialog"] button[title="Submit"], [role="dialog"] footer button:last-child',
+  // c-pselib_advanced-text-area[data-id="comments"] → shadow → lightning-textarea → shadow → textarea.slds-textarea
+  commentArea:     'textarea.slds-textarea',
+  // lightning-button[data-id="comments-action"] → shadow → button[title="Reject Timecard"]
+  confirmBtnHost:  'lightning-button[data-id="comments-action"]',
+  confirmBtnInner: 'button[title="Reject Timecard"]',
 };
 
 // ── Main ───────────────────────────────────────────────────────────────────────
@@ -255,15 +262,17 @@ async function runApproval() {
           rejectBtn.click();
           await sleep(1500);
 
-          // Fill in comment and submit
+          // Fill in comment
           const textarea = await waitForEl(REJECT_DIALOG.commentArea, 8000);
           textarea.focus();
           setNativeValue(textarea, REJECTION_COMMENT);
           await sleep(500);
 
-          const submitBtn = deepQuery(document, REJECT_DIALOG.submitBtn);
+          // Confirm button: find the lightning-button host, then pierce its shadow for the real button
+          const confirmHost = deepQuery(document, REJECT_DIALOG.confirmBtnHost);
+          const submitBtn   = confirmHost?.shadowRoot?.querySelector(REJECT_DIALOG.confirmBtnInner);
           if (!submitBtn) throw new Error(
-            'Submit button not found in reject dialog. Check REJECT_DIALOG.submitBtn.'
+            'Reject Timecard button not found in modal. Check REJECT_DIALOG selectors.'
           );
           submitBtn.click();
           await sleep(2500);
