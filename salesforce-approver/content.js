@@ -104,15 +104,51 @@ function getLightningBtn(maRoot, dataId) {
   return shadowOrSelf(lb)?.querySelector('button') ?? null;
 }
 
+// ── Salesforce session ID — read from page context via script injection ────────
+// Content scripts run in an isolated JS world; Salesforce session globals live in
+// the page's main world. We bridge the gap with a temporary <script> tag that
+// reads the session ID and posts it back via window.postMessage.
+
+function getSessionId() {
+  return new Promise(resolve => {
+    const MSG = '__sf_approver_sid__';
+
+    const handler = e => {
+      if (e.source === window && e.data?.type === MSG) {
+        window.removeEventListener('message', handler);
+        resolve(e.data.sid ?? '');
+      }
+    };
+    window.addEventListener('message', handler);
+
+    // Runs in the page's main world — has access to Salesforce globals
+    const s = document.createElement('script');
+    s.textContent = `(function(){
+      var sid = '';
+      try {
+        sid = (window.sforce && (sforce.connection?.sessionId || sforce.one?.sessionId))
+           || window.UserContext?.sessionId
+           || window.SFDC?._sessionId
+           || '';
+      } catch(e) {}
+      window.postMessage({ type: '${MSG}', sid: sid }, '*');
+    })();`;
+    document.head.appendChild(s);
+    s.remove();
+
+    // Resolve with empty string after 2 s if no response (will fall back gracefully)
+    setTimeout(() => resolve(''), 2000);
+  });
+}
+
 // ── Salesforce REST API — batch-fetch Assignment names ─────────────────────────
-// Runs entirely on-domain so existing session cookies authenticate the request.
-// No page navigation needed.
 
 async function fetchAssignments(recordIds) {
+  const sid = await getSessionId();
+  if (!sid) throw new Error('Could not read Salesforce session ID from page context');
+
   // Try to read the API version the page already uses; fall back to v59.0
-  const ver = window.Salesforce?.settings?.apiVersion
-    ?? document.querySelector('script[src*="/api/v"]')?.src?.match(/\/v(\d+\.\d+)\//)?.[1]?.replace(/^/, 'v')
-    ?? 'v59.0';
+  const ver = window.Salesforce?.settings?.apiVersion ?? 'v59.0';
 
   const idList = recordIds.map(id => `'${id}'`).join(',');
   const soql   = `SELECT Id, pse__Assignment__r.Name `
@@ -121,7 +157,13 @@ async function fetchAssignments(recordIds) {
 
   const res = await fetch(
     `/services/data/${ver}/query/?q=${encodeURIComponent(soql)}`,
-    { headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' } }
+    {
+      headers: {
+        'Authorization':    `Bearer ${sid}`,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept':           'application/json',
+      },
+    }
   );
 
   if (!res.ok) {
