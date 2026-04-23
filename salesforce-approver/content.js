@@ -435,10 +435,8 @@ async function runApproval() {
 
   await checkHours();
 
-  // Switch to the "Sven - ALL hours last week" tab
-  chrome.runtime.sendMessage({ action: 'switchToHoursTab' }, response => {
-    if (!response?.found) log('ℹ️  Hours tab not found as an open browser tab.', '#888');
-  });
+  // Open the "Sven - ALL hours last week" Salesforce report in a new tab
+  await openHoursReport();
 
   log('', '');
   log('Overlay closes in 30 s.', '#555');
@@ -526,6 +524,38 @@ async function checkHours() {
 
   } catch (err) {
     log(`❌ Hours check failed: ${err.message}`, '#FF5252');
+  }
+}
+
+async function openHoursReport() {
+  const REPORT_NAME = 'Sven - ALL hours last week';
+  try {
+    log('', '');
+    log(`🔗 Opening "${REPORT_NAME}"…`, '#888');
+
+    const sid = await getSessionId();
+    const ver = window.Salesforce?.settings?.apiVersion ?? 'v59.0';
+    if (!sid) throw new Error('No session ID — cannot look up report URL.');
+
+    // Find the report ID by name via SOQL (Report is queryable in Salesforce)
+    const soql = `SELECT Id FROM Report WHERE Name = '${REPORT_NAME}'`;
+    const res  = await fetch(
+      `/services/data/${ver}/query/?q=${encodeURIComponent(soql)}`,
+      { headers: { Authorization: `Bearer ${sid}`, Accept: 'application/json' } }
+    );
+    if (!res.ok) throw new Error(`Report lookup API ${res.status}`);
+
+    const data = await res.json();
+    if (!data.records?.length) throw new Error(`Report "${REPORT_NAME}" not found in Salesforce.`);
+
+    const reportId = data.records[0].Id;
+    const url      = `https://planonsoftware.lightning.force.com/lightning/r/${reportId}/view`;
+
+    // Ask background service worker to open the tab (avoids popup blockers)
+    chrome.runtime.sendMessage({ action: 'openTab', url });
+    log('✓ Report tab opened.', '#69F0AE');
+  } catch (err) {
+    log(`⚠️  Could not open report: ${err.message}`, '#FFCA28');
   }
 }
 
