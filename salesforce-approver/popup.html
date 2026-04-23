@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 260px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #69F0AE;
+      margin-bottom: 6px;
+    }
+
+    p {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 18px;
+      line-height: 1.5;
+    }
+
+    #approveBtn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #00C853;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    #approveBtn:hover  { background: #00E676; }
+    #approveBtn:active { transform: scale(0.97); }
+    #approveBtn:disabled { background: #444; color: #777; cursor: default; }
+
+    #status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #aaa;
+      min-height: 16px;
+      text-align: center;
+    }
+
+    #status.error  { color: #FF5252; }
+    #status.ok     { color: #69F0AE; }
+  </style>
+</head>
+<body>
+  <h1>⏱ Hours Approver</h1>
+  <p>Navigates to Mass Approval, rejects overhead assignments, approves the rest.</p>
+  <button id="approveBtn">✅ Approve Hours</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
