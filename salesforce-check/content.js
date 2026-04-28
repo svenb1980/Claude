@@ -57,7 +57,8 @@ function setTitle(t) {
 
 function querySF(soql) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ action: 'querySOQL', soql }, ({ records, error } = {}) => {
+    chrome.runtime.sendMessage({ action: 'querySOQL', soql }, ({ records, error, sidSource } = {}) => {
+      log(`   Session ID source: ${sidSource ?? 'unknown'}`, '#555');
       if (error) reject(new Error(error));
       else       resolve(records);
     });
