@@ -119,15 +119,6 @@ function apiVer() {
   return window.Salesforce?.settings?.apiVersion ?? 'v59.0';
 }
 
-async function sfFetch(soql) {
-  const res = await fetch(
-    `/services/data/${apiVer()}/query/?q=${encodeURIComponent(soql)}`,
-    { headers: SF_HEADERS }
-  );
-  if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return res.json();
-}
-
 // ── Batch-fetch Assignment names ───────────────────────────────────────────────
 
 async function fetchAssignments(recordIds) {
@@ -402,131 +393,10 @@ async function runApproval() {
   log(`🚫 Rejected : ${rejected}`, '#FF7043');
   if (errors) log(`⚠️  Errors   : ${errors}  (see log above)`, '#FFCA28');
 
-  // ── Hours report ───────────────────────────────────────────────────────────
-  log('', '');
-  log('────────────────────────────────────', '#2a4a2a');
-  log('📊 Checking last week\'s hours…', '#90CAF9');
-  setTitle('⏱ Hours Approver — checking hours…');
-
-  await checkHours();
-
-  // Open the "Sven - ALL hours last week" Salesforce report in a new tab
-  await openHoursReport();
-
   log('', '');
   log('Overlay closes in 30 s.', '#555');
   setTitle('⏱ Hours Approver — done');
   setTimeout(() => overlay?.remove(), 30000);
-}
-
-// ── Last-week hours check ──────────────────────────────────────────────────────
-
-async function fetchLastWeekHours() {
-  const soql = [
-    'SELECT pse__Resource__r.Name,',
-    '  pse__Monday_Hours__c, pse__Tuesday_Hours__c, pse__Wednesday_Hours__c,',
-    '  pse__Thursday_Hours__c, pse__Friday_Hours__c, pse__Saturday_Hours__c,',
-    '  pse__Sunday_Hours__c',
-    'FROM pse__Timecard_Header__c',
-    'WHERE pse__Week_Start_Date__c = LAST_WEEK',
-  ].join(' ');
-
-  let url = `/services/data/${apiVer()}/query/?q=${encodeURIComponent(soql)}`;
-  const allRecords = [];
-
-  // Follow pagination (Salesforce returns max 2000 rows per page)
-  while (url) {
-    const res = await fetch(url, { headers: SF_HEADERS });
-    if (!res.ok) throw new Error(`Hours API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const data = await res.json();
-    allRecords.push(...(data.records ?? []));
-    url = data.nextRecordsUrl ?? null;
-  }
-
-  // Sum hours per person across all their timecards
-  const hoursMap = {};
-  for (const rec of allRecords) {
-    const name = rec.pse__Resource__r?.Name;
-    if (!name) continue;
-    const weekTotal = (rec.pse__Monday_Hours__c    || 0)
-                    + (rec.pse__Tuesday_Hours__c   || 0)
-                    + (rec.pse__Wednesday_Hours__c || 0)
-                    + (rec.pse__Thursday_Hours__c  || 0)
-                    + (rec.pse__Friday_Hours__c    || 0)
-                    + (rec.pse__Saturday_Hours__c  || 0)
-                    + (rec.pse__Sunday_Hours__c    || 0);
-    hoursMap[name] = (hoursMap[name] ?? 0) + weekTotal;
-  }
-  return hoursMap;
-}
-
-async function checkHours() {
-  try {
-    const txt      = await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text());
-    const expected = txt.split('\n').map(n => n.trim()).filter(Boolean);
-
-    const hoursMap = await fetchLastWeekHours();
-
-    // Compare each expected name against logged hours
-    const incomplete = [];
-    for (const name of expected) {
-      const logged  = hoursMap[name] ?? 0;
-      const missing = 40 - logged;
-      if (missing > 0) incomplete.push({ name, logged, missing });
-    }
-
-    if (incomplete.length === 0) {
-      log('🎉 Everyone has logged 40 hours. Nothing missing!', '#69F0AE');
-      return;
-    }
-
-    log(`⚠️  ${incomplete.length} person(s) with missing hours:`, '#FFCA28');
-    log('', '');
-    for (const { name, logged, missing } of incomplete) {
-      const bar   = logged === 0 ? '(no hours logged)' : `${logged}h logged`;
-      log(`  • ${name}`, '#FF7043');
-      log(`    ${bar}  →  ${missing}h missing`, '#aaa');
-    }
-
-  } catch (err) {
-    log(`❌ Hours check failed: ${err.message}`, '#FF5252');
-  }
-}
-
-async function openHoursReport() {
-  const DATA_ID  = '0QkQu0000004jjJKAQ';
-  const FALLBACK = '/lightning/r/Report/00OQu000005z8FVMAY/view';
-
-  log('', '');
-  log('🔗 Navigating to "Sven - ALL hours last week"…', '#888');
-
-  const appNav = document.querySelector('one-appnav');
-  const navBar = appNav?.shadowRoot?.querySelector('one-app-nav-bar');
-  const sr     = navBar?.shadowRoot;
-
-  if (sr) {
-    // Try the visible nav bar item first
-    const navItem = sr.querySelector(`one-app-nav-bar-item-root[data-id="${DATA_ID}"]`);
-    const navLink = navItem?.shadowRoot?.querySelector('a');
-    if (navLink && !navItem.classList.contains('hidden')) {
-      navLink.click();
-      log('✓ Clicked nav bar tab.', '#69F0AE');
-      return;
-    }
-
-    // Fall back to the overflow ("More") menu item
-    const menuItem = sr.querySelector(`one-app-nav-bar-menu-item[data-id="${DATA_ID}"]`);
-    const menuLink = menuItem?.shadowRoot?.querySelector('a');
-    if (menuLink) {
-      menuLink.click();
-      log('✓ Clicked overflow menu tab.', '#69F0AE');
-      return;
-    }
-  }
-
-  // Last resort: in-page navigation (avoids full page reload vs. new tab)
-  log('⚠️  Nav tab not found — using in-page navigation.', '#FFCA28');
-  window.location.href = FALLBACK;
 }
 
 if (!window.__sfApproverRunning) {

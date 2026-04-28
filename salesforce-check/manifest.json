@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Salesforce Hours Check",
+  "version": "1.0",
+  "description": "Check last week's logged hours and open the hours report.",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "host_permissions": ["https://*.lightning.force.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Check Hours"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["reports.txt"],
+      "matches": ["https://*.lightning.force.com/*"]
+    }
+  ]
+}

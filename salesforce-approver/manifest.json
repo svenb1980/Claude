@@ -11,11 +11,5 @@
   },
   "background": {
     "service_worker": "background.js"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["reports.txt"],
-      "matches": ["https://*.lightning.force.com/*"]
-    }
-  ]
+  }
 }
