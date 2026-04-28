@@ -142,38 +142,6 @@ async function checkHours() {
   }
 }
 
-async function openHoursReport() {
-  const DATA_ID  = '0QkQu0000004jjJKAQ';
-  const FALLBACK = '/lightning/r/Report/00OQu000005z8FVMAY/view';
-
-  log('', '');
-  log('🔗 Navigating to "Sven - ALL hours last week"…', '#888');
-
-  const appNav = document.querySelector('one-appnav');
-  const navBar = appNav?.shadowRoot?.querySelector('one-app-nav-bar');
-  const sr     = navBar?.shadowRoot;
-
-  if (sr) {
-    const navItem = sr.querySelector(`one-app-nav-bar-item-root[data-id="${DATA_ID}"]`);
-    const navLink = navItem?.shadowRoot?.querySelector('a');
-    if (navLink && !navItem.classList.contains('hidden')) {
-      navLink.click();
-      log('✓ Clicked nav bar tab.', '#69F0AE');
-      return;
-    }
-
-    const menuItem = sr.querySelector(`one-app-nav-bar-menu-item[data-id="${DATA_ID}"]`);
-    const menuLink = menuItem?.shadowRoot?.querySelector('a');
-    if (menuLink) {
-      menuLink.click();
-      log('✓ Clicked overflow menu tab.', '#69F0AE');
-      return;
-    }
-  }
-
-  log('⚠️  Nav tab not found — pin the report to your nav bar for one-click access.', '#FFCA28');
-}
-
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 async function runCheck() {
@@ -192,7 +160,6 @@ async function runCheck() {
 
     log('📊 Checking last week\'s hours…', '#90CAF9');
     await checkHours();
-    await openHoursReport();
   } catch (err) {
     log(`❌ Fatal: ${err.message}`, '#FF5252');
   }

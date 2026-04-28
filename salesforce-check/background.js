@@ -3,6 +3,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const tabId = sender.tab?.id;
     if (!tabId) { sendResponse({ sid: '' }); return true; }
 
+    // Try MAIN world globals first (works when sforce/UserContext are initialised)
     chrome.scripting.executeScript({
       target: { tabId },
       world:  'MAIN',
@@ -16,8 +17,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         } catch (e) { return ''; }
       }
     })
-    .then(results => sendResponse({ sid: results?.[0]?.result ?? '' }))
-    .catch(err   => sendResponse({ sid: '', error: err.message }));
+    .then(async results => {
+      const sid = results?.[0]?.result ?? '';
+      if (sid) { sendResponse({ sid }); return; }
+
+      // Fall back to the sid cookie (set by Salesforce on the lightning domain)
+      const cookies = await chrome.cookies.getAll({
+        domain: 'planonsoftware.lightning.force.com',
+        name:   'sid',
+      });
+      sendResponse({ sid: cookies?.[0]?.value ?? '' });
+    })
+    .catch(async () => {
+      try {
+        const cookies = await chrome.cookies.getAll({
+          domain: 'planonsoftware.lightning.force.com',
+          name:   'sid',
+        });
+        sendResponse({ sid: cookies?.[0]?.value ?? '' });
+      } catch {
+        sendResponse({ sid: '' });
+      }
+    });
 
     return true;
   }
