@@ -3,6 +3,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ── Overlay ────────────────────────────────────────────────────────────────────
 
 let overlay, logEl;
+const logLines = [];
 
 function createOverlay() {
   document.getElementById('__sf-checker-overlay')?.remove();
@@ -36,6 +37,9 @@ function createOverlay() {
 }
 
 function log(msg, color = '#ccc') {
+  logLines.push(msg);
+  chrome.storage.local.set({ sfCheckerLog: logLines.join('\n') });
+
   if (!logEl) return;
   const line = document.createElement('div');
   line.style.cssText = `color:${color};margin-bottom:2px;word-break:break-word`;
@@ -168,6 +172,8 @@ async function openHoursReport() {
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 async function runCheck() {
+  logLines.length = 0;
+  chrome.storage.local.set({ sfCheckerLog: '' });
   createOverlay();
 
   try {
