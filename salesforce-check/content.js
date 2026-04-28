@@ -53,20 +53,14 @@ function setTitle(t) {
   if (el) el.textContent = t;
 }
 
-// ── Salesforce REST API helpers ────────────────────────────────────────────────
+// ── Salesforce query (runs fetch in MAIN world via background) ─────────────────
 
-const SF_HEADERS = {
-  'X-Requested-With': 'XMLHttpRequest',
-  'Accept':           'application/json',
-};
-
-function apiVer() {
-  return window.Salesforce?.settings?.apiVersion ?? 'v59.0';
-}
-
-function getSessionId() {
-  return new Promise(resolve => {
-    chrome.runtime.sendMessage({ action: 'getSessionId' }, ({ sid } = {}) => resolve(sid || ''));
+function querySF(soql) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ action: 'querySOQL', soql }, ({ records, error } = {}) => {
+      if (error) reject(new Error(error));
+      else       resolve(records);
+    });
   });
 }
 
@@ -82,20 +76,10 @@ async function fetchLastWeekHours() {
     'WHERE pse__Week_Start_Date__c = LAST_WEEK',
   ].join(' ');
 
-  let url = `/services/data/${apiVer()}/query/?q=${encodeURIComponent(soql)}`;
-  const allRecords = [];
-
-  // Follow pagination (Salesforce returns max 2000 rows per page)
-  while (url) {
-    const res = await fetch(url, { headers: SF_HEADERS });
-    if (!res.ok) throw new Error(`Hours API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const data = await res.json();
-    allRecords.push(...(data.records ?? []));
-    url = data.nextRecordsUrl ?? null;
-  }
+  const records = await querySF(soql);
 
   const hoursMap = {};
-  for (const rec of allRecords) {
+  for (const rec of records) {
     const name = rec.pse__Resource__r?.Name;
     if (!name) continue;
     const weekTotal = (rec.pse__Monday_Hours__c    || 0)
@@ -150,14 +134,6 @@ async function runCheck() {
   createOverlay();
 
   try {
-    const sid = await getSessionId();
-    if (sid) {
-      SF_HEADERS['Authorization'] = `Bearer ${sid}`;
-      log('✓ Session ID obtained.', '#555');
-    } else {
-      log('⚠️  Could not read session ID — API calls may fail.', '#FFCA28');
-    }
-
     log('📊 Checking last week\'s hours…', '#90CAF9');
     await checkHours();
   } catch (err) {
