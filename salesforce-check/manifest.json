@@ -5,6 +5,9 @@
   "description": "Check last week's logged hours and open the hours report.",
   "permissions": ["activeTab", "scripting", "tabs", "storage"],
   "host_permissions": ["https://*.lightning.force.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Check Hours"

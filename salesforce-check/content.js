@@ -64,6 +64,12 @@ function apiVer() {
   return window.Salesforce?.settings?.apiVersion ?? 'v59.0';
 }
 
+function getSessionId() {
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage({ action: 'getSessionId' }, ({ sid } = {}) => resolve(sid || ''));
+  });
+}
+
 // ── Hours check ────────────────────────────────────────────────────────────────
 
 async function fetchLastWeekHours() {
@@ -165,8 +171,7 @@ async function openHoursReport() {
     }
   }
 
-  log('⚠️  Nav tab not found — using in-page navigation.', '#FFCA28');
-  window.location.href = FALLBACK;
+  log('⚠️  Nav tab not found — pin the report to your nav bar for one-click access.', '#FFCA28');
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
@@ -177,6 +182,14 @@ async function runCheck() {
   createOverlay();
 
   try {
+    const sid = await getSessionId();
+    if (sid) {
+      SF_HEADERS['Authorization'] = `Bearer ${sid}`;
+      log('✓ Session ID obtained.', '#555');
+    } else {
+      log('⚠️  Could not read session ID — API calls may fail.', '#FFCA28');
+    }
+
     log('📊 Checking last week\'s hours…', '#90CAF9');
     await checkHours();
     await openHoursReport();
