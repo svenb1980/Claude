@@ -62,36 +62,29 @@ hr.div { border: none; border-top: 1px solid #2a2a4a; margin: 8px 0; }
 
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────────
-const TW = 80, TH = 40;          // iso tile width / height in px
-const COLS = 12, ROWS = 6;       // grid cells (0.5 m each → 6 m × 3 m)
-const WALL_H = 88;               // back wall pixel height
-const OX = 262, OY = 118;        // iso origin on canvas
+const TW = 80, TH = 40;
+const COLS = 12, ROWS = 6;
+const WALL_H = 88;
+const OX = 262, OY = 118;
 const CW = 760, CH = 530;
 
-// ── Furniture catalog ──────────────────────────────────────────────────────────
+// ── Furniture catalog (hpx = overall bounding height for ghost preview) ────────
 const CATALOG = [
-  // id, label, category, grid-w, grid-d, pixel-height, [top, left, right] colors
-  { id:'sofa',      label:'Sofa',          cat:'Seating', w:3, d:1, hpx:50,
-    c:['#7BB8CC','#4A8FAA','#5AA0BB'] },
-  { id:'armchair',  label:'Armchair',      cat:'Seating', w:2, d:2, hpx:50,
-    c:['#82B88A','#508A58','#609A68'] },
-  { id:'chair',     label:'Dining Chair',  cat:'Seating', w:1, d:1, hpx:48,
-    c:['#C4A882','#967452','#A88460'] },
-  { id:'dintable',  label:'Dining Table',  cat:'Tables',  w:4, d:2, hpx:34,
-    c:['#D4AA78','#A87838','#BF9248'] },
-  { id:'coffee',    label:'Coffee Table',  cat:'Tables',  w:2, d:1, hpx:18,
-    c:['#D8C490','#A89460','#C0AA72'] },
-  { id:'sidetable', label:'Side Table',    cat:'Tables',  w:1, d:1, hpx:24,
-    c:['#E0C8A0','#B09065','#C8A875'] },
+  { id:'sofa',      label:'Sofa',          cat:'Seating', w:3, d:1, hpx:52 },
+  { id:'armchair',  label:'Armchair',      cat:'Seating', w:2, d:2, hpx:52 },
+  { id:'chair',     label:'Dining Chair',  cat:'Seating', w:1, d:1, hpx:46 },
+  { id:'dintable',  label:'Dining Table',  cat:'Tables',  w:4, d:2, hpx:34 },
+  { id:'coffee',    label:'Coffee Table',  cat:'Tables',  w:2, d:1, hpx:18 },
+  { id:'sidetable', label:'Side Table',    cat:'Tables',  w:1, d:1, hpx:26 },
 ];
 
 // ── State ──────────────────────────────────────────────────────────────────────
-let placed   = [];     // [{id, col, row, rot}]
-let selected = -1;
-let activeTool = null; // null = select mode, or CATALOG entry
+let placed     = [];
+let selected   = -1;
+let activeTool = null;
 let placeRot   = false;
-let ghost      = null; // {id, col, row, rot} hover preview while placing
-let drag       = null; // {idx, offCol, offRow} while dragging a placed item
+let ghost      = null;
+let drag       = null;
 
 // ── Canvas ─────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('room');
@@ -99,10 +92,6 @@ canvas.width = CW; canvas.height = CH;
 const ctx = canvas.getContext('2d');
 
 // ── Iso math ───────────────────────────────────────────────────────────────────
-function toScreen(col, row, ox, oy, tw, th) {
-  ox ??= OX; oy ??= OY; tw ??= TW; th ??= TH;
-  return { x: ox + (col - row) * (tw / 2), y: oy + (col + row) * (th / 2) };
-}
 function toGrid(sx, sy) {
   const dx = (sx - OX) / (TW / 2), dy = (sy - OY) / (TH / 2);
   return { col: (dx + dy) / 2, row: (dy - dx) / 2 };
@@ -113,14 +102,23 @@ function getWD(item) {
   return item.rot ? { w: def.d, d: def.w } : { w: def.w, d: def.d };
 }
 
-// ── Core drawing ───────────────────────────────────────────────────────────────
-function drawIsoBox(c2, col, row, w, d, hpx, colors, alpha, ox, oy, tw, th) {
-  ox ??= OX; oy ??= OY; tw ??= TW; th ??= TH;
-  if (alpha != null) c2.globalAlpha = alpha;
-  const s = (cl, rw) => toScreen(cl, rw, ox, oy, tw, th);
+// ── Drawing context ────────────────────────────────────────────────────────────
+// All drawing primitives use DC so the same code works for both
+// the main canvas and mini palette previews.
+let DC = null;
+
+function s(col, row) {
+  return {
+    x: DC.ox + (col - row) * (DC.tw / 2),
+    y: DC.oy + (col + row) * (DC.th / 2)
+  };
+}
+
+function box(col, row, w, d, hpx, colors) {
   const [cT, cL, cR] = colors;
   const tl = s(col,   row),   tr = s(col+w, row);
   const br = s(col+w, row+d), bl = s(col,   row+d);
+  const c2 = DC.c;
 
   function face(pts, fill) {
     c2.beginPath();
@@ -128,23 +126,179 @@ function drawIsoBox(c2, col, row, w, d, hpx, colors, alpha, ox, oy, tw, th) {
     for (let i = 1; i < pts.length; i++) c2.lineTo(pts[i].x, pts[i].y);
     c2.closePath();
     c2.fillStyle = fill; c2.fill();
-    c2.strokeStyle = 'rgba(0,0,0,0.22)'; c2.lineWidth = 1; c2.stroke();
+    c2.strokeStyle = 'rgba(0,0,0,0.18)'; c2.lineWidth = 0.8; c2.stroke();
   }
-
-  // Draw left face, right face, then top (painter order)
   face([{x:bl.x,y:bl.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:bl.x,y:bl.y}], cL);
   face([{x:tr.x,y:tr.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:tr.x,y:tr.y}], cR);
   face([{x:tl.x,y:tl.y-hpx},{x:tr.x,y:tr.y-hpx},{x:br.x,y:br.y-hpx},{x:bl.x,y:bl.y-hpx}], cT);
-
-  if (alpha != null) c2.globalAlpha = 1;
 }
 
+// Wood grain lines across top face (parallel to col axis)
+function grain(col, row, w, d, hpx, step) {
+  DC.c.strokeStyle = 'rgba(80,45,10,0.18)'; DC.c.lineWidth = 0.7;
+  for (let r = step; r < d; r += step) {
+    const a = s(col, row + r), b = s(col + w, row + r);
+    DC.c.beginPath();
+    DC.c.moveTo(a.x, a.y - hpx); DC.c.lineTo(b.x, b.y - hpx);
+    DC.c.stroke();
+  }
+}
+
+// Cushion divider lines across top face (parallel to row axis)
+function cushions(col, row, w, d, hpx, n) {
+  DC.c.strokeStyle = 'rgba(0,0,0,0.18)'; DC.c.lineWidth = 1.2;
+  for (let i = 1; i < n; i++) {
+    const c2 = col + w * i / n;
+    const a = s(c2, row), b = s(c2, row + d);
+    DC.c.beginPath();
+    DC.c.moveTo(a.x, a.y - hpx); DC.c.lineTo(b.x, b.y - hpx);
+    DC.c.stroke();
+  }
+}
+function cushionsH(col, row, w, d, hpx, n) { // for rotated pieces (dividers in row axis)
+  DC.c.strokeStyle = 'rgba(0,0,0,0.18)'; DC.c.lineWidth = 1.2;
+  for (let i = 1; i < n; i++) {
+    const r2 = row + d * i / n;
+    const a = s(col, r2), b = s(col + w, r2);
+    DC.c.beginPath();
+    DC.c.moveTo(a.x, a.y - hpx); DC.c.lineTo(b.x, b.y - hpx);
+    DC.c.stroke();
+  }
+}
+
+// ── Per-furniture drawing ──────────────────────────────────────────────────────
+
+const SOFA_SEAT  = ['#92AEBE', '#5A8098', '#6E92A8'];
+const SOFA_FRAME = ['#607888', '#385868', '#4A6A7A'];
+const SOFA_PILL  = ['#7896A6', '#486878', '#5A7A8A']; // pillow accent
+
+function drawSofa(col, row, rot) {
+  if (!rot) {
+    // 3 wide × 1 deep  — back against high-col wall
+    box(col,      row,      0.28, 1,    46, SOFA_FRAME); // left arm
+    box(col+0.28, row,      2.44, 0.28, 54, SOFA_FRAME); // backrest
+    box(col+0.28, row+0.28, 2.44, 0.72, 22, SOFA_SEAT);  // seat
+    box(col+2.72, row,      0.28, 1,    46, SOFA_FRAME); // right arm
+    cushions(col+0.28, row+0.28, 2.44, 0.72, 22, 3);
+  } else {
+    // 1 wide × 3 deep  — back against high-row wall
+    box(col, row,      1,    0.28, 46, SOFA_FRAME); // top arm
+    box(col, row+0.28, 0.28, 2.44, 54, SOFA_FRAME); // backrest
+    box(col+0.28, row+0.28, 0.72, 2.44, 22, SOFA_SEAT);  // seat
+    box(col, row+2.72, 1,    0.28, 46, SOFA_FRAME); // bottom arm
+    cushionsH(col+0.28, row+0.28, 0.72, 2.44, 22, 3);
+  }
+}
+
+const CHAIR_SEAT  = ['#8EAA84', '#587A52', '#6A8C64'];
+const CHAIR_FRAME = ['#6A8A60', '#3E6038', '#507048'];
+
+function drawArmchair(col, row, rot) {
+  if (!rot) {
+    // 2 × 2
+    box(col,      row,      0.3, 2,    44, CHAIR_FRAME); // left arm
+    box(col+0.3,  row,      1.4, 0.35, 54, CHAIR_FRAME); // backrest
+    box(col+0.3,  row+0.35, 1.4, 1.65, 22, CHAIR_SEAT);  // seat
+    box(col+1.7,  row,      0.3, 2,    44, CHAIR_FRAME); // right arm
+  } else {
+    // rotated 2 × 2 (square, but back changes side)
+    box(col, row,      2,    0.3,  44, CHAIR_FRAME); // top arm
+    box(col, row+0.3,  0.35, 1.4,  54, CHAIR_FRAME); // backrest
+    box(col+0.35, row+0.3, 1.65, 1.4, 22, CHAIR_SEAT);  // seat
+    box(col, row+1.7,  2,    0.3,  44, CHAIR_FRAME); // bottom arm
+  }
+}
+
+const DCHAIR_WOOD = ['#C09468', '#8A5C30', '#A87848'];
+const DCHAIR_PAD  = ['#D4A870', '#9E6E38', '#BC8850'];
+
+function drawDiningChair(col, row, rot) {
+  if (!rot) {
+    box(col+0.15, row+0.05, 0.7, 0.15, 44, DCHAIR_WOOD); // back post
+    box(col+0.1,  row+0.2,  0.8, 0.7,  18, DCHAIR_PAD);  // seat
+  } else {
+    box(col+0.05, row+0.15, 0.15, 0.7, 44, DCHAIR_WOOD); // back post
+    box(col+0.2,  row+0.1,  0.7,  0.8, 18, DCHAIR_PAD);  // seat
+  }
+}
+
+const TABLE_TOP  = ['#D4AC6A', '#9C6C2C', '#B88A44'];
+const TABLE_LEG  = ['#8A5A22', '#5A3004', '#724018'];
+const TABLE_APRON= ['#BE9450', '#8C6020', '#A07838'];
+
+function drawDiningTable(col, row, rot) {
+  const w = rot ? 2 : 4, d = rot ? 4 : 2;
+  const lw = 0.14, ld = 0.14, lh = 34;
+  // Legs
+  box(col,       row,       lw, ld, lh, TABLE_LEG);
+  box(col+w-lw,  row,       lw, ld, lh, TABLE_LEG);
+  box(col,       row+d-ld,  lw, ld, lh, TABLE_LEG);
+  box(col+w-lw,  row+d-ld,  lw, ld, lh, TABLE_LEG);
+  // Apron (side rails)
+  box(col+lw, row,      w-2*lw, ld,      lh, TABLE_APRON);
+  box(col+lw, row+d-ld, w-2*lw, ld,      lh, TABLE_APRON);
+  box(col,    row+ld,   lw,     d-2*ld,  lh, TABLE_APRON);
+  box(col+w-lw, row+ld, lw,     d-2*ld,  lh, TABLE_APRON);
+  // Top surface (slightly overhangs apron)
+  box(col-0.04, row-0.04, w+0.08, d+0.08, 34, TABLE_TOP);
+  grain(col-0.04, row-0.04, w+0.08, d+0.08, 34, 0.45);
+}
+
+const COFFEE_TOP   = ['#DBBE7A', '#A88838', '#C0A050'];
+const COFFEE_FRAME = ['#B89A58', '#887028', '#A08840'];
+const COFFEE_SHELF = ['#C8A860', '#907830', '#A88E48'];
+
+function drawCoffeeTable(col, row, rot) {
+  const w = rot ? 1 : 2, d = rot ? 2 : 1;
+  // Frame/sides
+  box(col, row, w, d, 18, COFFEE_FRAME);
+  // Lower shelf (inset, lower hpx)
+  box(col+0.18, row+0.18, w-0.36, d-0.36, 10, COFFEE_SHELF);
+  // Top surface
+  box(col-0.05, row-0.05, w+0.1, d+0.1, 18, COFFEE_TOP);
+  grain(col-0.05, row-0.05, w+0.1, d+0.1, 18, 0.4);
+}
+
+const SIDE_TOP  = ['#E4C882', '#AC8840', '#C8A858'];
+const SIDE_LEG  = ['#B89A5A', '#887020', '#A08838'];
+
+function drawSideTable(col, row, _rot) {
+  const lw = 0.11, ld = 0.11, lh = 26;
+  // Four turned legs
+  box(col+0.06, row+0.06, lw, ld, lh, SIDE_LEG);
+  box(col+0.83, row+0.06, lw, ld, lh, SIDE_LEG);
+  box(col+0.06, row+0.83, lw, ld, lh, SIDE_LEG);
+  box(col+0.83, row+0.83, lw, ld, lh, SIDE_LEG);
+  // Top
+  box(col-0.04, row-0.04, 1.08, 1.08, 26, SIDE_TOP);
+  grain(col-0.04, row-0.04, 1.08, 1.08, 26, 0.42);
+}
+
+// Ghost colors
+const GHOST_OK  = ['#69F0AE', '#32B478', '#1E9664'];
+const GHOST_BAD = ['#FF5252', '#CC2222', '#AA1111'];
+
+function drawFurnitureItem(id, col, row, rot) {
+  switch (id) {
+    case 'sofa':      drawSofa(col, row, rot);         break;
+    case 'armchair':  drawArmchair(col, row, rot);     break;
+    case 'chair':     drawDiningChair(col, row, rot);  break;
+    case 'dintable':  drawDiningTable(col, row, rot);  break;
+    case 'coffee':    drawCoffeeTable(col, row, rot);  break;
+    case 'sidetable': drawSideTable(col, row, rot);    break;
+  }
+}
+
+// ── Room render ────────────────────────────────────────────────────────────────
 function drawRoom() {
   ctx.clearRect(0, 0, CW, CH);
   ctx.fillStyle = '#0e0e1c';
   ctx.fillRect(0, 0, CW, CH);
 
-  // ── Back walls ──────────────────────────────────────────────────────────────
+  // Set main drawing context
+  DC = { c: ctx, ox: OX, oy: OY, tw: TW, th: TH };
+
+  // Back walls
   function wallPoly(pts, fill) {
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
@@ -153,45 +307,29 @@ function drawRoom() {
     ctx.fillStyle = fill; ctx.fill();
     ctx.strokeStyle = '#181830'; ctx.lineWidth = 1; ctx.stroke();
   }
-
-  const w0 = toScreen(0, 0), wC = toScreen(COLS, 0), wR = toScreen(0, ROWS);
-
-  // Right wall (along row=0)
-  wallPoly([
-    {x: w0.x, y: w0.y - WALL_H}, {x: wC.x, y: wC.y - WALL_H},
-    {x: wC.x, y: wC.y},           {x: w0.x, y: w0.y}
-  ], '#222C48');
-
-  // Left wall (along col=0)
-  wallPoly([
-    {x: w0.x, y: w0.y - WALL_H}, {x: wR.x, y: wR.y - WALL_H},
-    {x: wR.x, y: wR.y},           {x: w0.x, y: w0.y}
-  ], '#1A2238');
-
-  // Ceiling edge
+  const w0 = s(0, 0), wC = s(COLS, 0), wR = s(0, ROWS);
+  wallPoly([{x:w0.x,y:w0.y-WALL_H},{x:wC.x,y:wC.y-WALL_H},{x:wC.x,y:wC.y},{x:w0.x,y:w0.y}], '#222C48');
+  wallPoly([{x:w0.x,y:w0.y-WALL_H},{x:wR.x,y:wR.y-WALL_H},{x:wR.x,y:wR.y},{x:w0.x,y:w0.y}], '#1A2238');
   ctx.strokeStyle = '#3A4A6A'; ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(wC.x, wC.y - WALL_H);
-  ctx.lineTo(w0.x, w0.y - WALL_H);
-  ctx.lineTo(wR.x, wR.y - WALL_H);
+  ctx.moveTo(wC.x, wC.y-WALL_H); ctx.lineTo(w0.x, w0.y-WALL_H); ctx.lineTo(wR.x, wR.y-WALL_H);
   ctx.stroke();
 
-  // ── Floor tiles ──────────────────────────────────────────────────────────────
+  // Floor — warm wood planks
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      const fill = (c + r) % 2 === 0 ? '#1E2040' : '#1A1C38';
-      const tl = toScreen(c,   r), tr = toScreen(c+1, r);
-      const br = toScreen(c+1, r+1), bl = toScreen(c, r+1);
+      const fill = (c + r) % 2 === 0 ? '#2A2218' : '#28201A';
+      const tl = s(c, r), tr = s(c+1, r), br = s(c+1, r+1), bl = s(c, r+1);
       ctx.beginPath();
       ctx.moveTo(tl.x,tl.y); ctx.lineTo(tr.x,tr.y);
       ctx.lineTo(br.x,br.y); ctx.lineTo(bl.x,bl.y);
       ctx.closePath();
       ctx.fillStyle = fill; ctx.fill();
-      ctx.strokeStyle = '#252550'; ctx.lineWidth = 0.5; ctx.stroke();
+      ctx.strokeStyle = '#1E1810'; ctx.lineWidth = 0.5; ctx.stroke();
     }
   }
 
-  // ── Furniture (depth-sorted) ──────────────────────────────────────────────────
+  // Furniture (depth-sorted)
   const toRender = placed.map((p, i) => ({ ...p, ...getWD(p), idx: i, isGhost: false }));
   if (ghost) toRender.push({ ...ghost, ...getWD(ghost), idx: -1, isGhost: true });
   toRender.sort((a, b) => (a.col + a.row) - (b.col + b.row));
@@ -204,32 +342,28 @@ function drawRoom() {
     if (item.isGhost) {
       const valid = item.col >= 0 && item.row >= 0 &&
                     item.col + w <= COLS && item.row + d <= ROWS;
-      const gc = valid
-        ? ['#69F0AE', '#32B478', '#1E9664']
-        : ['#FF5252', '#CC2222', '#AA1111'];
-      drawIsoBox(ctx, item.col, item.row, w, d, def.hpx, gc, 0.62);
+      ctx.globalAlpha = 0.6;
+      box(item.col, item.row, w, d, def.hpx, valid ? GHOST_OK : GHOST_BAD);
+      ctx.globalAlpha = 1;
     } else {
       if (item.idx === selected) {
-        // Floor-projection selection ring
-        const tl = toScreen(item.col,   item.row);
-        const tr = toScreen(item.col+w, item.row);
-        const br = toScreen(item.col+w, item.row+d);
-        const bl = toScreen(item.col,   item.row+d);
+        const tl = s(item.col,   item.row),   tr = s(item.col+w, item.row);
+        const br = s(item.col+w, item.row+d), bl = s(item.col,   item.row+d);
         ctx.beginPath();
         ctx.moveTo(tl.x,tl.y); ctx.lineTo(tr.x,tr.y);
         ctx.lineTo(br.x,br.y); ctx.lineTo(bl.x,bl.y);
         ctx.closePath();
         ctx.strokeStyle = '#69F0AE'; ctx.lineWidth = 2.5; ctx.stroke();
       }
-      drawIsoBox(ctx, item.col, item.row, w, d, def.hpx, def.c);
+      drawFurnitureItem(item.id, item.col, item.row, item.rot);
     }
   }
 
-  // ── Dimension labels ──────────────────────────────────────────────────────────
-  ctx.font = '11px Segoe UI'; ctx.fillStyle = '#383858'; ctx.textAlign = 'center';
-  const dA = toScreen(COLS / 2, ROWS);
+  // Dimension labels
+  ctx.font = '11px Segoe UI'; ctx.fillStyle = '#38384A'; ctx.textAlign = 'center';
+  const dA = s(COLS / 2, ROWS);
   ctx.fillText('6.0 m', dA.x, dA.y + 22);
-  const dB = toScreen(0, ROWS / 2);
+  const dB = s(0, ROWS / 2);
   ctx.save();
   ctx.translate(dB.x - 20, dB.y + 4);
   ctx.rotate(-Math.PI / 6);
@@ -255,18 +389,13 @@ function hitTest(col, row) {
 
 canvas.addEventListener('mousemove', e => {
   const { col, row } = mouseGrid(e);
-
   if (drag) {
     const { w, d } = getWD(placed[drag.idx]);
     placed[drag.idx].col = Math.max(0, Math.min(COLS - w, col - drag.offCol));
     placed[drag.idx].row = Math.max(0, Math.min(ROWS - d, row - drag.offRow));
     drawRoom(); return;
   }
-
-  if (activeTool) {
-    ghost = { id: activeTool.id, col, row, rot: placeRot };
-    drawRoom();
-  }
+  if (activeTool) { ghost = { id: activeTool.id, col, row, rot: placeRot }; drawRoom(); }
 });
 
 canvas.addEventListener('mouseleave', () => { ghost = null; drawRoom(); });
@@ -274,7 +403,6 @@ canvas.addEventListener('mouseleave', () => { ghost = null; drawRoom(); });
 canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   const { col, row } = mouseGrid(e);
-
   if (activeTool) {
     const { w, d } = getWD({ id: activeTool.id, rot: placeRot });
     if (col >= 0 && row >= 0 && col + w <= COLS && row + d <= ROWS) {
@@ -283,12 +411,9 @@ canvas.addEventListener('mousedown', e => {
     }
     drawRoom(); return;
   }
-
   const hit = hitTest(col, row);
   selected = hit;
-  if (hit >= 0) {
-    drag = { idx: hit, offCol: col - placed[hit].col, offRow: row - placed[hit].row };
-  }
+  if (hit >= 0) drag = { idx: hit, offCol: col - placed[hit].col, offRow: row - placed[hit].row };
   drawRoom();
 });
 
@@ -297,7 +422,6 @@ canvas.addEventListener('mouseup', () => { drag = null; });
 // ── Keyboard ───────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-
   if (e.key === 'r' || e.key === 'R') {
     if (activeTool) {
       placeRot = !placeRot;
@@ -310,13 +434,11 @@ document.addEventListener('keydown', e => {
       drawRoom();
     }
   }
-
   if ((e.key === 'Delete' || e.key === 'Backspace') && selected >= 0) {
     e.preventDefault();
     placed.splice(selected, 1);
     selected = -1; drawRoom();
   }
-
   if (e.key === 'Escape') {
     activeTool = null; ghost = null; placeRot = false;
     canvas.style.cursor = 'default';
@@ -328,10 +450,9 @@ document.addEventListener('keydown', e => {
 
 // ── Palette ────────────────────────────────────────────────────────────────────
 function miniPreview(def) {
-  const pw = 118, ph = 56, margin = 10;
+  const pw = 118, ph = 58, margin = 10;
   const c = document.createElement('canvas');
   c.width = pw; c.height = ph;
-  const pc = c.getContext('2d');
 
   const fw = (def.w + def.d) * (TW / 2);
   const fh = (def.w + def.d) * (TH / 2) + def.hpx;
@@ -340,10 +461,10 @@ function miniPreview(def) {
 
   const cxLocal = (def.w - def.d) * (TW / 2) / 2 * scale;
   const cyLocal = ((def.w + def.d) * (TH / 2) - def.hpx) / 2 * scale;
-  const oxx = pw / 2 - cxLocal;
-  const oyy = ph / 2 - cyLocal;
 
-  drawIsoBox(pc, 0, 0, def.w, def.d, shpx, def.c, 1, oxx, oyy, stw, sth);
+  DC = { c: c.getContext('2d'), ox: pw/2 - cxLocal, oy: ph/2 - cyLocal, tw: stw, th: sth };
+  drawFurnitureItem(def.id, 0, 0, false);
+  DC = null;
   return c;
 }
 
@@ -357,17 +478,15 @@ function setTool(def) {
 
 function buildPalette() {
   const aside = document.getElementById('palette');
-  const cats = ['Seating', 'Tables'];
-  for (const cat of cats) {
+  for (const cat of ['Seating', 'Tables']) {
     const sec = document.createElement('div');
     sec.className = 'sec'; sec.textContent = cat;
     aside.appendChild(sec);
-
     for (const def of CATALOG.filter(c => c.cat === cat)) {
       const el = document.createElement('div');
       el.className = 'tool'; el.dataset.id = def.id;
       const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = def.label;
-      const sz  = document.createElement('div'); sz.className  = 'sz';
+      const sz  = document.createElement('div'); sz.className = 'sz';
       sz.textContent = `${def.w * 0.5} × ${def.d * 0.5} m`;
       el.append(miniPreview(def), lbl, sz);
       el.addEventListener('click', () => setTool(def));
@@ -389,27 +508,20 @@ document.getElementById('btnExport').addEventListener('click', () => {
   const data = { room: { width: 6, depth: 3, unit: 'm' }, furniture: placed };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'room-layout.json'; a.click();
+  a.href = URL.createObjectURL(blob); a.download = 'room-layout.json'; a.click();
 });
-
 document.getElementById('btnImport').addEventListener('click', () =>
-  document.getElementById('fileIn').click()
-);
-
+  document.getElementById('fileIn').click());
 document.getElementById('fileIn').addEventListener('change', e => {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
     try {
       const data = JSON.parse(ev.target.result);
-      if (Array.isArray(data.furniture)) {
-        placed = data.furniture; selected = -1; drawRoom();
-      }
+      if (Array.isArray(data.furniture)) { placed = data.furniture; selected = -1; drawRoom(); }
     } catch { alert('Could not read layout file.'); }
   };
-  reader.readAsText(file);
-  e.target.value = '';
+  reader.readAsText(file); e.target.value = '';
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────────
