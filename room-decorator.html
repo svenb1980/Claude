@@ -358,9 +358,16 @@ function drawRoom() {
     if (item.isGhost) {
       const valid = item.col >= 0 && item.row >= 0 &&
                     item.col + w <= COLS && item.row + d <= ROWS;
-      ctx.globalAlpha = 0.6;
-      box(item.col, item.row, w, d, def.hpx, valid ? GHOST_OK : GHOST_BAD);
+      // Draw full detailed shape so orientation is visible
+      ctx.globalAlpha = 0.62;
+      drawFurnitureItem(item.id, item.col, item.row, item.rot);
       ctx.globalAlpha = 1;
+      // Validity outline around footprint
+      const gtl = s(item.col,   item.row),   gtr = s(item.col+w, item.row);
+      const gbr = s(item.col+w, item.row+d), gbl = s(item.col,   item.row+d);
+      ctx.beginPath(); ctx.moveTo(gtl.x,gtl.y); ctx.lineTo(gtr.x,gtr.y);
+      ctx.lineTo(gbr.x,gbr.y); ctx.lineTo(gbl.x,gbl.y); ctx.closePath();
+      ctx.strokeStyle = valid ? '#69F0AE' : '#FF5252'; ctx.lineWidth = 2; ctx.stroke();
     } else {
       if (item.idx === selected) {
         const tl = s(item.col,   item.row),   tr = s(item.col+w, item.row);
