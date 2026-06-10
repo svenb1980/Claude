@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Room Decorator — 6 m × 3 m</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #12121f; color: #ddd; font-family: 'Segoe UI', sans-serif;
+       display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+header { background: #0c0c1a; border-bottom: 1px solid #2a2a4a; padding: 10px 18px;
+         display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+header h1 { font-size: 14px; font-weight: 600; color: #69F0AE; }
+.spacer { flex: 1; }
+button { background: #252540; border: 1px solid #3a3a60; color: #ccc; padding: 5px 13px;
+         border-radius: 6px; cursor: pointer; font-size: 12px; }
+button:hover { background: #303060; }
+
+#main { display: flex; flex: 1; overflow: hidden; }
+
+#palette { width: 148px; background: #0c0c1a; border-right: 1px solid #2a2a4a;
+           padding: 10px 8px; overflow-y: auto; flex-shrink: 0; }
+.sec { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px;
+       padding: 6px 4px 4px; }
+.tool { padding: 6px 4px; border-radius: 6px; cursor: pointer;
+        border: 2px solid transparent; margin-bottom: 4px; }
+.tool:hover { background: #1a1a38; }
+.tool.active { border-color: #69F0AE; background: #162c24; }
+.tool canvas { display: block; margin: 0 auto 3px; }
+.tool .lbl { text-align: center; font-size: 10px; color: #999; }
+.tool .sz  { text-align: center; font-size: 9px; color: #555; }
+hr.div { border: none; border-top: 1px solid #2a2a4a; margin: 8px 0; }
+
+#canvas-area { flex: 1; display: flex; align-items: center; justify-content: center;
+               background: #0e0e1c; overflow: hidden; }
+
+#hints { position: fixed; bottom: 8px; right: 12px; font-size: 10px; color: #333355;
+         pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⬡ Room Decorator — 6 m × 3 m</h1>
+  <div class="spacer"></div>
+  <button id="btnExport">↓ Export JSON</button>
+  <button id="btnImport">↑ Import JSON</button>
+  <input type="file" id="fileIn" accept=".json" style="display:none">
+</header>
+<div id="main">
+  <aside id="palette">
+    <div class="tool active" id="toolSelect">
+      <div style="text-align:center;font-size:20px;line-height:1.4">↖</div>
+      <div class="lbl">Select / Move</div>
+    </div>
+    <hr class="div">
+  </aside>
+  <div id="canvas-area">
+    <canvas id="room"></canvas>
+  </div>
+</div>
+<div id="hints">R = rotate &nbsp;·&nbsp; Del = delete &nbsp;·&nbsp; Drag to move &nbsp;·&nbsp; Esc = cancel</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────────
+const TW = 80, TH = 40;          // iso tile width / height in px
+const COLS = 12, ROWS = 6;       // grid cells (0.5 m each → 6 m × 3 m)
+const WALL_H = 88;               // back wall pixel height
+const OX = 262, OY = 118;        // iso origin on canvas
+const CW = 760, CH = 530;
+
+// ── Furniture catalog ──────────────────────────────────────────────────────────
+const CATALOG = [
+  // id, label, category, grid-w, grid-d, pixel-height, [top, left, right] colors
+  { id:'sofa',      label:'Sofa',          cat:'Seating', w:3, d:1, hpx:50,
+    c:['#7BB8CC','#4A8FAA','#5AA0BB'] },
+  { id:'armchair',  label:'Armchair',      cat:'Seating', w:2, d:2, hpx:50,
+    c:['#82B88A','#508A58','#609A68'] },
+  { id:'chair',     label:'Dining Chair',  cat:'Seating', w:1, d:1, hpx:48,
+    c:['#C4A882','#967452','#A88460'] },
+  { id:'dintable',  label:'Dining Table',  cat:'Tables',  w:4, d:2, hpx:34,
+    c:['#D4AA78','#A87838','#BF9248'] },
+  { id:'coffee',    label:'Coffee Table',  cat:'Tables',  w:2, d:1, hpx:18,
+    c:['#D8C490','#A89460','#C0AA72'] },
+  { id:'sidetable', label:'Side Table',    cat:'Tables',  w:1, d:1, hpx:24,
+    c:['#E0C8A0','#B09065','#C8A875'] },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let placed   = [];     // [{id, col, row, rot}]
+let selected = -1;
+let activeTool = null; // null = select mode, or CATALOG entry
+let placeRot   = false;
+let ghost      = null; // {id, col, row, rot} hover preview while placing
+let drag       = null; // {idx, offCol, offRow} while dragging a placed item
+
+// ── Canvas ─────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('room');
+canvas.width = CW; canvas.height = CH;
+const ctx = canvas.getContext('2d');
+
+// ── Iso math ───────────────────────────────────────────────────────────────────
+function toScreen(col, row, ox, oy, tw, th) {
+  ox ??= OX; oy ??= OY; tw ??= TW; th ??= TH;
+  return { x: ox + (col - row) * (tw / 2), y: oy + (col + row) * (th / 2) };
+}
+function toGrid(sx, sy) {
+  const dx = (sx - OX) / (TW / 2), dy = (sy - OY) / (TH / 2);
+  return { col: (dx + dy) / 2, row: (dy - dx) / 2 };
+}
+function getWD(item) {
+  const def = CATALOG.find(c => c.id === item.id);
+  if (!def) return { w:1, d:1 };
+  return item.rot ? { w: def.d, d: def.w } : { w: def.w, d: def.d };
+}
+
+// ── Core drawing ───────────────────────────────────────────────────────────────
+function drawIsoBox(c2, col, row, w, d, hpx, colors, alpha, ox, oy, tw, th) {
+  ox ??= OX; oy ??= OY; tw ??= TW; th ??= TH;
+  if (alpha != null) c2.globalAlpha = alpha;
+  const s = (cl, rw) => toScreen(cl, rw, ox, oy, tw, th);
+  const [cT, cL, cR] = colors;
+  const tl = s(col,   row),   tr = s(col+w, row);
+  const br = s(col+w, row+d), bl = s(col,   row+d);
+
+  function face(pts, fill) {
+    c2.beginPath();
+    c2.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) c2.lineTo(pts[i].x, pts[i].y);
+    c2.closePath();
+    c2.fillStyle = fill; c2.fill();
+    c2.strokeStyle = 'rgba(0,0,0,0.22)'; c2.lineWidth = 1; c2.stroke();
+  }
+
+  // Draw left face, right face, then top (painter order)
+  face([{x:bl.x,y:bl.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:bl.x,y:bl.y}], cL);
+  face([{x:tr.x,y:tr.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:tr.x,y:tr.y}], cR);
+  face([{x:tl.x,y:tl.y-hpx},{x:tr.x,y:tr.y-hpx},{x:br.x,y:br.y-hpx},{x:bl.x,y:bl.y-hpx}], cT);
+
+  if (alpha != null) c2.globalAlpha = 1;
+}
+
+function drawRoom() {
+  ctx.clearRect(0, 0, CW, CH);
+  ctx.fillStyle = '#0e0e1c';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // ── Back walls ──────────────────────────────────────────────────────────────
+  function wallPoly(pts, fill) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = '#181830'; ctx.lineWidth = 1; ctx.stroke();
+  }
+
+  const w0 = toScreen(0, 0), wC = toScreen(COLS, 0), wR = toScreen(0, ROWS);
+
+  // Right wall (along row=0)
+  wallPoly([
+    {x: w0.x, y: w0.y - WALL_H}, {x: wC.x, y: wC.y - WALL_H},
+    {x: wC.x, y: wC.y},           {x: w0.x, y: w0.y}
+  ], '#222C48');
+
+  // Left wall (along col=0)
+  wallPoly([
+    {x: w0.x, y: w0.y - WALL_H}, {x: wR.x, y: wR.y - WALL_H},
+    {x: wR.x, y: wR.y},           {x: w0.x, y: w0.y}
+  ], '#1A2238');
+
+  // Ceiling edge
+  ctx.strokeStyle = '#3A4A6A'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(wC.x, wC.y - WALL_H);
+  ctx.lineTo(w0.x, w0.y - WALL_H);
+  ctx.lineTo(wR.x, wR.y - WALL_H);
+  ctx.stroke();
+
+  // ── Floor tiles ──────────────────────────────────────────────────────────────
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const fill = (c + r) % 2 === 0 ? '#1E2040' : '#1A1C38';
+      const tl = toScreen(c,   r), tr = toScreen(c+1, r);
+      const br = toScreen(c+1, r+1), bl = toScreen(c, r+1);
+      ctx.beginPath();
+      ctx.moveTo(tl.x,tl.y); ctx.lineTo(tr.x,tr.y);
+      ctx.lineTo(br.x,br.y); ctx.lineTo(bl.x,bl.y);
+      ctx.closePath();
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = '#252550'; ctx.lineWidth = 0.5; ctx.stroke();
+    }
+  }
+
+  // ── Furniture (depth-sorted) ──────────────────────────────────────────────────
+  const toRender = placed.map((p, i) => ({ ...p, ...getWD(p), idx: i, isGhost: false }));
+  if (ghost) toRender.push({ ...ghost, ...getWD(ghost), idx: -1, isGhost: true });
+  toRender.sort((a, b) => (a.col + a.row) - (b.col + b.row));
+
+  for (const item of toRender) {
+    const def = CATALOG.find(c => c.id === item.id);
+    if (!def) continue;
+    const { w, d } = item;
+
+    if (item.isGhost) {
+      const valid = item.col >= 0 && item.row >= 0 &&
+                    item.col + w <= COLS && item.row + d <= ROWS;
+      const gc = valid
+        ? ['#69F0AE', '#32B478', '#1E9664']
+        : ['#FF5252', '#CC2222', '#AA1111'];
+      drawIsoBox(ctx, item.col, item.row, w, d, def.hpx, gc, 0.62);
+    } else {
+      if (item.idx === selected) {
+        // Floor-projection selection ring
+        const tl = toScreen(item.col,   item.row);
+        const tr = toScreen(item.col+w, item.row);
+        const br = toScreen(item.col+w, item.row+d);
+        const bl = toScreen(item.col,   item.row+d);
+        ctx.beginPath();
+        ctx.moveTo(tl.x,tl.y); ctx.lineTo(tr.x,tr.y);
+        ctx.lineTo(br.x,br.y); ctx.lineTo(bl.x,bl.y);
+        ctx.closePath();
+        ctx.strokeStyle = '#69F0AE'; ctx.lineWidth = 2.5; ctx.stroke();
+      }
+      drawIsoBox(ctx, item.col, item.row, w, d, def.hpx, def.c);
+    }
+  }
+
+  // ── Dimension labels ──────────────────────────────────────────────────────────
+  ctx.font = '11px Segoe UI'; ctx.fillStyle = '#383858'; ctx.textAlign = 'center';
+  const dA = toScreen(COLS / 2, ROWS);
+  ctx.fillText('6.0 m', dA.x, dA.y + 22);
+  const dB = toScreen(0, ROWS / 2);
+  ctx.save();
+  ctx.translate(dB.x - 20, dB.y + 4);
+  ctx.rotate(-Math.PI / 6);
+  ctx.fillText('3.0 m', 0, 0);
+  ctx.restore();
+}
+
+// ── Mouse handling ─────────────────────────────────────────────────────────────
+function mouseGrid(e) {
+  const r = canvas.getBoundingClientRect();
+  const g = toGrid(e.clientX - r.left, e.clientY - r.top);
+  return { col: Math.floor(g.col), row: Math.floor(g.row) };
+}
+
+function hitTest(col, row) {
+  for (let i = placed.length - 1; i >= 0; i--) {
+    const { w, d } = getWD(placed[i]);
+    if (col >= placed[i].col && col < placed[i].col + w &&
+        row >= placed[i].row && row < placed[i].row + d) return i;
+  }
+  return -1;
+}
+
+canvas.addEventListener('mousemove', e => {
+  const { col, row } = mouseGrid(e);
+
+  if (drag) {
+    const { w, d } = getWD(placed[drag.idx]);
+    placed[drag.idx].col = Math.max(0, Math.min(COLS - w, col - drag.offCol));
+    placed[drag.idx].row = Math.max(0, Math.min(ROWS - d, row - drag.offRow));
+    drawRoom(); return;
+  }
+
+  if (activeTool) {
+    ghost = { id: activeTool.id, col, row, rot: placeRot };
+    drawRoom();
+  }
+});
+
+canvas.addEventListener('mouseleave', () => { ghost = null; drawRoom(); });
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const { col, row } = mouseGrid(e);
+
+  if (activeTool) {
+    const { w, d } = getWD({ id: activeTool.id, rot: placeRot });
+    if (col >= 0 && row >= 0 && col + w <= COLS && row + d <= ROWS) {
+      placed.push({ id: activeTool.id, col, row, rot: placeRot });
+      selected = placed.length - 1;
+    }
+    drawRoom(); return;
+  }
+
+  const hit = hitTest(col, row);
+  selected = hit;
+  if (hit >= 0) {
+    drag = { idx: hit, offCol: col - placed[hit].col, offRow: row - placed[hit].row };
+  }
+  drawRoom();
+});
+
+canvas.addEventListener('mouseup', () => { drag = null; });
+
+// ── Keyboard ───────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+
+  if (e.key === 'r' || e.key === 'R') {
+    if (activeTool) {
+      placeRot = !placeRot;
+      if (ghost) { ghost.rot = placeRot; drawRoom(); }
+    } else if (selected >= 0) {
+      placed[selected].rot = !placed[selected].rot;
+      const { w, d } = getWD(placed[selected]);
+      placed[selected].col = Math.min(placed[selected].col, COLS - w);
+      placed[selected].row = Math.min(placed[selected].row, ROWS - d);
+      drawRoom();
+    }
+  }
+
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selected >= 0) {
+    e.preventDefault();
+    placed.splice(selected, 1);
+    selected = -1; drawRoom();
+  }
+
+  if (e.key === 'Escape') {
+    activeTool = null; ghost = null; placeRot = false;
+    canvas.style.cursor = 'default';
+    document.querySelectorAll('.tool').forEach(t => t.classList.remove('active'));
+    document.getElementById('toolSelect').classList.add('active');
+    drawRoom();
+  }
+});
+
+// ── Palette ────────────────────────────────────────────────────────────────────
+function miniPreview(def) {
+  const pw = 118, ph = 56, margin = 10;
+  const c = document.createElement('canvas');
+  c.width = pw; c.height = ph;
+  const pc = c.getContext('2d');
+
+  const fw = (def.w + def.d) * (TW / 2);
+  const fh = (def.w + def.d) * (TH / 2) + def.hpx;
+  const scale = Math.min((pw - margin) / fw, (ph - margin) / fh);
+  const stw = TW * scale, sth = TH * scale, shpx = def.hpx * scale;
+
+  const cxLocal = (def.w - def.d) * (TW / 2) / 2 * scale;
+  const cyLocal = ((def.w + def.d) * (TH / 2) - def.hpx) / 2 * scale;
+  const oxx = pw / 2 - cxLocal;
+  const oyy = ph / 2 - cyLocal;
+
+  drawIsoBox(pc, 0, 0, def.w, def.d, shpx, def.c, 1, oxx, oyy, stw, sth);
+  return c;
+}
+
+function setTool(def) {
+  activeTool = def; ghost = null; placeRot = false; selected = -1;
+  canvas.style.cursor = 'crosshair';
+  document.querySelectorAll('.tool').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.tool[data-id="${def.id}"]`).classList.add('active');
+  document.getElementById('toolSelect').classList.remove('active');
+}
+
+function buildPalette() {
+  const aside = document.getElementById('palette');
+  const cats = ['Seating', 'Tables'];
+  for (const cat of cats) {
+    const sec = document.createElement('div');
+    sec.className = 'sec'; sec.textContent = cat;
+    aside.appendChild(sec);
+
+    for (const def of CATALOG.filter(c => c.cat === cat)) {
+      const el = document.createElement('div');
+      el.className = 'tool'; el.dataset.id = def.id;
+      const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = def.label;
+      const sz  = document.createElement('div'); sz.className  = 'sz';
+      sz.textContent = `${def.w * 0.5} × ${def.d * 0.5} m`;
+      el.append(miniPreview(def), lbl, sz);
+      el.addEventListener('click', () => setTool(def));
+      aside.appendChild(el);
+    }
+  }
+}
+
+document.getElementById('toolSelect').addEventListener('click', () => {
+  activeTool = null; ghost = null; placeRot = false;
+  canvas.style.cursor = 'default';
+  document.querySelectorAll('.tool').forEach(t => t.classList.remove('active'));
+  document.getElementById('toolSelect').classList.add('active');
+  drawRoom();
+});
+
+// ── Export / Import ────────────────────────────────────────────────────────────
+document.getElementById('btnExport').addEventListener('click', () => {
+  const data = { room: { width: 6, depth: 3, unit: 'm' }, furniture: placed };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'room-layout.json'; a.click();
+});
+
+document.getElementById('btnImport').addEventListener('click', () =>
+  document.getElementById('fileIn').click()
+);
+
+document.getElementById('fileIn').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (Array.isArray(data.furniture)) {
+        placed = data.furniture; selected = -1; drawRoom();
+      }
+    } catch { alert('Could not read layout file.'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+buildPalette();
+drawRoom();
+</script>
+</body>
+</html>
