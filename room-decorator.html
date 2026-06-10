@@ -58,7 +58,7 @@ hr.div { border: none; border-top: 1px solid #2a2a4a; margin: 8px 0; }
     <canvas id="room"></canvas>
   </div>
 </div>
-<div id="hints">R = rotate 90° &nbsp;·&nbsp; Del = delete &nbsp;·&nbsp; Drag to move &nbsp;·&nbsp; Esc = cancel</div>
+<div id="hints">Space = rotate 90° &nbsp;·&nbsp; Del = delete &nbsp;·&nbsp; Drag to move &nbsp;·&nbsp; Esc = cancel</div>
 
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -428,7 +428,8 @@ canvas.addEventListener('mouseup', () => { drag = null; });
 // ── Keyboard ───────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  if (e.key === 'r' || e.key === 'R') {
+  if (e.key === ' ') {
+    e.preventDefault();
     if (activeTool) {
       placeRot = (placeRot + 1) % 4;
       if (ghost) { ghost.rot = placeRot; drawRoom(); }
