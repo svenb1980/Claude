@@ -76,6 +76,9 @@ const CATALOG = [
   { id:'dintable',  label:'Dining Table',  cat:'Tables',  w:4, d:2, hpx:34 },
   { id:'coffee',    label:'Coffee Table',  cat:'Tables',  w:2, d:1, hpx:18 },
   { id:'sidetable', label:'Side Table',    cat:'Tables',  w:1, d:1, hpx:26 },
+  { id:'basecab',   label:'Base Cabinet',  cat:'Kitchen', w:1, d:1, hpx:48, sizeLabel:'0.6 × 0.6 m' },
+  { id:'basecab2',  label:'Cabinet ×2',    cat:'Kitchen', w:2, d:1, hpx:48, sizeLabel:'1.2 × 0.6 m' },
+  { id:'basecab3',  label:'Cabinet ×3',    cat:'Kitchen', w:3, d:1, hpx:48, sizeLabel:'1.8 × 0.6 m' },
 ];
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -323,6 +326,54 @@ function drawSideTable(col, row, _rot) {
   grain(col-0.04, row-0.04, 1.08, 1.08, 26, 0.42);
 }
 
+// Kitchen base cabinet — off-white body + dark stone counter top
+const BCAB_BODY = ['#E6E2D8', '#B4B0A6', '#CCCABE'];
+const BCAB_CTR  = ['#6C6C64', '#404038', '#565650'];
+// Cabinet door panel (slightly inset, same face as body but darker)
+const BCAB_DOOR = ['#D8D4CA', '#A4A09A', '#BCBAB0'];
+
+function drawBaseCabinet(col, row, rot) {
+  const w = (rot % 2 === 0) ? 1 : 1;  // square single
+  const d = 1;
+  const h = 44;  // ≈92 cm body height
+  box(col, row, w, d, h, BCAB_BODY);
+  // Door/drawer panel: inset on visible face — drawn as a thinner inner box at full height
+  box(col + 0.1, row + 0.1, w - 0.2, d - 0.2, h, BCAB_DOOR);
+  // Countertop — slightly overhangs all edges, 4 px thicker than body
+  box(col - 0.06, row - 0.06, w + 0.12, d + 0.12, h + 4, BCAB_CTR);
+}
+
+function drawBaseCabinet2(col, row, rot) {
+  const w = (rot % 2 === 0) ? 2 : 1;
+  const d = (rot % 2 === 0) ? 1 : 2;
+  const h = 44;
+  box(col, row, w, d, h, BCAB_BODY);
+  // Two door panels side by side
+  if (rot % 2 === 0) {
+    box(col + 0.08, row + 0.08, 0.84, d - 0.16, h, BCAB_DOOR);
+    box(col + 1.08, row + 0.08, 0.84, d - 0.16, h, BCAB_DOOR);
+  } else {
+    box(col + 0.08, row + 0.08, w - 0.16, 0.84, h, BCAB_DOOR);
+    box(col + 0.08, row + 1.08, w - 0.16, 0.84, h, BCAB_DOOR);
+  }
+  box(col - 0.06, row - 0.06, w + 0.12, d + 0.12, h + 4, BCAB_CTR);
+}
+
+function drawBaseCabinet3(col, row, rot) {
+  const w = (rot % 2 === 0) ? 3 : 1;
+  const d = (rot % 2 === 0) ? 1 : 3;
+  const h = 44;
+  box(col, row, w, d, h, BCAB_BODY);
+  if (rot % 2 === 0) {
+    for (let i = 0; i < 3; i++)
+      box(col + 0.08 + i, row + 0.08, 0.84, d - 0.16, h, BCAB_DOOR);
+  } else {
+    for (let i = 0; i < 3; i++)
+      box(col + 0.08, row + 0.08 + i, w - 0.16, 0.84, h, BCAB_DOOR);
+  }
+  box(col - 0.06, row - 0.06, w + 0.12, d + 0.12, h + 4, BCAB_CTR);
+}
+
 const GHOST_OK  = ['#69F0AE', '#32B478', '#1E9664'];
 const GHOST_BAD = ['#FF5252', '#CC2222', '#AA1111'];
 
@@ -333,7 +384,10 @@ function drawFurnitureItem(id, col, row, rot) {
     case 'chair':     drawDiningChair(col, row, rot); break;
     case 'dintable':  drawDiningTable(col, row, rot); break;
     case 'coffee':    drawCoffeeTable(col, row, rot); break;
-    case 'sidetable': drawSideTable(col, row, rot);   break;
+    case 'sidetable': drawSideTable(col, row, rot);    break;
+    case 'basecab':   drawBaseCabinet(col, row, rot);  break;
+    case 'basecab2':  drawBaseCabinet2(col, row, rot); break;
+    case 'basecab3':  drawBaseCabinet3(col, row, rot); break;
   }
 }
 
@@ -547,14 +601,14 @@ function setTool(def) {
 
 function buildPalette() {
   const aside = document.getElementById('palette');
-  for (const cat of ['Seating', 'Tables']) {
+  for (const cat of ['Seating', 'Tables', 'Kitchen']) {
     const sec = document.createElement('div'); sec.className = 'sec'; sec.textContent = cat;
     aside.appendChild(sec);
     for (const def of CATALOG.filter(c => c.cat === cat)) {
       const el = document.createElement('div'); el.className = 'tool'; el.dataset.id = def.id;
       const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = def.label;
       const sz  = document.createElement('div'); sz.className = 'sz';
-      sz.textContent = `${def.w*0.5} × ${def.d*0.5} m`;
+      sz.textContent = def.sizeLabel ?? `${def.w*0.5} × ${def.d*0.5} m`;
       el.append(miniPreview(def), lbl, sz);
       el.addEventListener('click', () => setTool(def));
       aside.appendChild(el);
