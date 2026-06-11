@@ -132,6 +132,7 @@ function box(col, row, w, d, hpx, colors) {
   const tl = s(col,   row),   tr = s(col+w, row);
   const br = s(col+w, row+d), bl = s(col,   row+d);
   const c2 = DC.c;
+  const cosA = Math.cos(DC.angle), sinA = Math.sin(DC.angle);
   function face(pts, fill) {
     c2.beginPath();
     c2.moveTo(pts[0].x, pts[0].y);
@@ -140,8 +141,18 @@ function box(col, row, w, d, hpx, colors) {
     c2.fillStyle = fill; c2.fill();
     c2.strokeStyle = 'rgba(0,0,0,0.18)'; c2.lineWidth = 0.8; c2.stroke();
   }
-  face([{x:bl.x,y:bl.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:bl.x,y:bl.y}], cL);
-  face([{x:tr.x,y:tr.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:tr.x,y:tr.y}], cR);
+  // Row-axis face: show +row (bl–br) when it faces the camera, else –row (tl–tr)
+  if (cosA + sinA >= 0) {
+    face([{x:bl.x,y:bl.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:bl.x,y:bl.y}], cL);
+  } else {
+    face([{x:tl.x,y:tl.y-hpx},{x:tr.x,y:tr.y-hpx},{x:tr.x,y:tr.y},{x:tl.x,y:tl.y}], cL);
+  }
+  // Col-axis face: show +col (tr–br) when it faces the camera, else –col (tl–bl)
+  if (cosA >= sinA) {
+    face([{x:tr.x,y:tr.y-hpx},{x:br.x,y:br.y-hpx},{x:br.x,y:br.y},{x:tr.x,y:tr.y}], cR);
+  } else {
+    face([{x:tl.x,y:tl.y-hpx},{x:bl.x,y:bl.y-hpx},{x:bl.x,y:bl.y},{x:tl.x,y:tl.y}], cR);
+  }
   face([{x:tl.x,y:tl.y-hpx},{x:tr.x,y:tr.y-hpx},{x:br.x,y:br.y-hpx},{x:bl.x,y:bl.y-hpx}], cT);
 }
 
@@ -336,18 +347,23 @@ function drawRoom() {
   viewOY = ANCHOR_Y - (COLS/2 * (cosA - sinA) + ROWS/2 * (sinA + cosA)) * (TH/2);
   DC = { c: ctx, ox: viewOX, oy: viewOY, tw: TW, th: TH, angle: viewAngle };
 
-  // Back walls
+  // Back walls — back corner tracks viewAngle so the correct two walls are always shown
   function wallPoly(pts, fill) {
     ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
     ctx.strokeStyle = '#181830'; ctx.lineWidth = 1; ctx.stroke();
   }
-  const w0 = s(0,0), wC = s(COLS,0), wR = s(0,ROWS);
-  wallPoly([{x:w0.x,y:w0.y-WALL_H},{x:wC.x,y:wC.y-WALL_H},{x:wC.x,y:wC.y},{x:w0.x,y:w0.y}], '#222C48');
-  wallPoly([{x:w0.x,y:w0.y-WALL_H},{x:wR.x,y:wR.y-WALL_H},{x:wR.x,y:wR.y},{x:w0.x,y:w0.y}], '#1A2238');
+  const cFactor = cosA - sinA, rFactor = sinA + cosA;
+  const bcol = cFactor >= 0 ? 0 : COLS;
+  const brow = rFactor >= 0 ? 0 : ROWS;
+  const wB  = s(bcol,        brow);
+  const wCA = s(COLS - bcol, brow);        // col-axis adjacent (constant row)
+  const wRA = s(bcol,        ROWS - brow); // row-axis adjacent (constant col)
+  wallPoly([{x:wB.x,y:wB.y-WALL_H},{x:wCA.x,y:wCA.y-WALL_H},{x:wCA.x,y:wCA.y},{x:wB.x,y:wB.y}], '#222C48');
+  wallPoly([{x:wB.x,y:wB.y-WALL_H},{x:wRA.x,y:wRA.y-WALL_H},{x:wRA.x,y:wRA.y},{x:wB.x,y:wB.y}], '#1A2238');
   ctx.strokeStyle = '#3A4A6A'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(wC.x,wC.y-WALL_H); ctx.lineTo(w0.x,w0.y-WALL_H); ctx.lineTo(wR.x,wR.y-WALL_H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(wCA.x,wCA.y-WALL_H); ctx.lineTo(wB.x,wB.y-WALL_H); ctx.lineTo(wRA.x,wRA.y-WALL_H); ctx.stroke();
 
   // Floor — warm wood planks
   for (let r = 0; r < ROWS; r++) {
@@ -364,7 +380,14 @@ function drawRoom() {
   // Furniture depth-sorted
   const toRender = placed.map((p, i) => ({ ...p, ...getWD(p), idx: i, isGhost: false }));
   if (ghost) toRender.push({ ...ghost, ...getWD(ghost), idx: -1, isGhost: true });
-  toRender.sort((a, b) => (a.col + a.row) - (b.col + b.row));
+  // Depth key: use the back corner of each item (the corner furthest from viewer)
+  toRender.sort((a, b) => {
+    const ac = cFactor >= 0 ? a.col : a.col + a.w;
+    const ar = rFactor >= 0 ? a.row : a.row + a.d;
+    const bc = cFactor >= 0 ? b.col : b.col + b.w;
+    const br2 = rFactor >= 0 ? b.row : b.row + b.d;
+    return (ac * cFactor + ar * rFactor) - (bc * cFactor + br2 * rFactor);
+  });
 
   for (const item of toRender) {
     const def = CATALOG.find(c => c.id === item.id);
