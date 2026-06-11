@@ -516,7 +516,15 @@ canvas.addEventListener('mouseleave', () => {
   canvas.style.cursor = activeTool ? 'crosshair' : 'default';
   drawRoom();
 });
+canvas.addEventListener('contextmenu', e => { e.preventDefault(); });
 canvas.addEventListener('mousedown', e => {
+  if (e.button === 2) {
+    selected = -1; activeTool = null; ghost = null; placeRot = 0;
+    canvas.style.cursor = 'default';
+    document.querySelectorAll('.tool').forEach(t => t.classList.remove('active'));
+    document.getElementById('toolSelect').classList.add('active');
+    drawRoom(); return;
+  }
   if (e.button !== 0) return;
   const { col, row } = mouseGrid(e);
   if (activeTool) {
