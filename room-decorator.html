@@ -58,7 +58,7 @@ hr.div { border: none; border-top: 1px solid #2a2a4a; margin: 8px 0; }
     <canvas id="room"></canvas>
   </div>
 </div>
-<div id="hints">Space = rotate 90° &nbsp;·&nbsp; Del = delete &nbsp;·&nbsp; Drag to move &nbsp;·&nbsp; Esc = cancel</div>
+<div id="hints">Space = rotate 90° &nbsp;·&nbsp; Del = delete &nbsp;·&nbsp; Drag furniture to move &nbsp;·&nbsp; Drag background to orbit &nbsp;·&nbsp; Esc = cancel</div>
 
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -85,6 +85,12 @@ let activeTool = null;
 let placeRot   = 0;     // 0 | 1 | 2 | 3  (×90°)
 let ghost      = null;
 let drag       = null;
+let viewAngle  = 0;     // azimuth rotation in radians
+let viewDrag   = null;  // { startX, startAngle } while orbiting
+// screen position of room centre (COLS/2, ROWS/2) — stays fixed while rotating
+const ANCHOR_X = OX + (COLS/2 - ROWS/2) * (TW/2);
+const ANCHOR_Y = OY + (COLS/2 + ROWS/2) * (TH/2);
+let viewOX = OX, viewOY = OY; // updated each frame
 
 // ── Canvas ─────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('room');
@@ -93,8 +99,11 @@ const ctx = canvas.getContext('2d');
 
 // ── Iso math ───────────────────────────────────────────────────────────────────
 function toGrid(sx, sy) {
-  const dx = (sx - OX) / (TW / 2), dy = (sy - OY) / (TH / 2);
-  return { col: (dx + dy) / 2, row: (dy - dx) / 2 };
+  const cosA = Math.cos(viewAngle), sinA = Math.sin(viewAngle);
+  const C = cosA + sinA, D = cosA - sinA;
+  const p = (sx - viewOX) / (TW / 2);
+  const q = (sy - viewOY) / (TH / 2);
+  return { col: (C * p + D * q) / 2, row: (C * q - D * p) / 2 };
 }
 
 // rot 0,2 → natural w×d;  rot 1,3 → swapped d×w
@@ -108,9 +117,13 @@ function getWD(item) {
 let DC = null;
 
 function s(col, row) {
+  const cosA = Math.cos(DC.angle), sinA = Math.sin(DC.angle);
+  // rotate 3-D point (col, 0, row) around vertical axis then project isometrically
+  const rx = col * cosA + row * sinA;
+  const rz = -col * sinA + row * cosA;
   return {
-    x: DC.ox + (col - row) * (DC.tw / 2),
-    y: DC.oy + (col + row) * (DC.th / 2)
+    x: DC.ox + (rx - rz) * (DC.tw / 2),
+    y: DC.oy + (rx + rz) * (DC.th / 2)
   };
 }
 
@@ -318,7 +331,10 @@ function drawRoom() {
   ctx.clearRect(0, 0, CW, CH);
   ctx.fillStyle = '#0e0e1c'; ctx.fillRect(0, 0, CW, CH);
 
-  DC = { c: ctx, ox: OX, oy: OY, tw: TW, th: TH };
+  const cosA = Math.cos(viewAngle), sinA = Math.sin(viewAngle);
+  viewOX = ANCHOR_X - (COLS/2 * (cosA + sinA) + ROWS/2 * (sinA - cosA)) * (TW/2);
+  viewOY = ANCHOR_Y - (COLS/2 * (cosA - sinA) + ROWS/2 * (sinA + cosA)) * (TH/2);
+  DC = { c: ctx, ox: viewOX, oy: viewOY, tw: TW, th: TH, angle: viewAngle };
 
   // Back walls
   function wallPoly(pts, fill) {
@@ -404,6 +420,10 @@ function hitTest(col, row) {
 }
 
 canvas.addEventListener('mousemove', e => {
+  if (viewDrag) {
+    viewAngle = viewDrag.startAngle + (e.clientX - viewDrag.startX) * 0.008;
+    drawRoom(); return;
+  }
   const { col, row } = mouseGrid(e);
   if (drag) {
     const { w, d } = getWD(placed[drag.idx]);
@@ -413,7 +433,12 @@ canvas.addEventListener('mousemove', e => {
   }
   if (activeTool) { ghost = { id: activeTool.id, col, row, rot: placeRot }; drawRoom(); }
 });
-canvas.addEventListener('mouseleave', () => { ghost = null; drawRoom(); });
+canvas.addEventListener('mouseleave', () => {
+  ghost = null;
+  viewDrag = null;
+  canvas.style.cursor = activeTool ? 'crosshair' : 'default';
+  drawRoom();
+});
 canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   const { col, row } = mouseGrid(e);
@@ -427,10 +452,21 @@ canvas.addEventListener('mousedown', e => {
   }
   const hit = hitTest(col, row);
   selected = hit;
-  if (hit >= 0) drag = { idx: hit, offCol: col-placed[hit].col, offRow: row-placed[hit].row };
+  if (hit >= 0) {
+    drag = { idx: hit, offCol: col-placed[hit].col, offRow: row-placed[hit].row };
+  } else {
+    viewDrag = { startX: e.clientX, startAngle: viewAngle };
+    canvas.style.cursor = 'grabbing';
+  }
   drawRoom();
 });
-canvas.addEventListener('mouseup', () => { drag = null; });
+canvas.addEventListener('mouseup', () => {
+  drag = null;
+  if (viewDrag) {
+    viewDrag = null;
+    canvas.style.cursor = activeTool ? 'crosshair' : 'default';
+  }
+});
 
 // ── Keyboard ───────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
@@ -472,7 +508,7 @@ function miniPreview(def) {
   const stw = TW*scale, sth = TH*scale, shpx = def.hpx*scale;
   const cxLocal = (def.w - def.d) * (TW/2) / 2 * scale;
   const cyLocal = ((def.w + def.d) * (TH/2) - def.hpx) / 2 * scale;
-  DC = { c: c.getContext('2d'), ox: pw/2-cxLocal, oy: ph/2-cyLocal, tw: stw, th: sth };
+  DC = { c: c.getContext('2d'), ox: pw/2-cxLocal, oy: ph/2-cyLocal, tw: stw, th: sth, angle: 0 };
   drawFurnitureItem(def.id, 0, 0, 0);
   DC = null;
   return c;
