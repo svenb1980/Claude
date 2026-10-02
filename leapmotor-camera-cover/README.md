@@ -1,37 +1,41 @@
-# Leapmotor B05 interior camera privacy cover
+# Leapmotor B05 driver-camera privacy cover
 
-A sliding shutter cover. The **base** sticks around the camera with double-sided tape, and the **shutter** slides in dovetail rails. It clicks into place when open and when closed.
+A flip-up lid for the driver-monitoring camera on the left A-pillar. A U-shaped frame is taped to the camera pod. The lid hangs over the lens when closed and folds up 180° onto the frame when open, and it clicks into place in both positions.
 
 ![preview](preview.png)
 
-The B05 camera dimensions aren't published, so the model is parametric. The STLs in this folder use the default 22 × 12 mm window. Measure your own camera before you print.
+It prints **as one piece with the hinge already assembled** (print-in-place). It needs no supports and no assembly.
 
-## 1. Measure (calipers or a ruler)
+## Why a flip lid and not a slider
 
-| Value | What to measure |
+The camera pod is small: about 45 × 28 mm with a 27–28 × 16–17.5 mm window. There's about 9 mm of face above the window and 6–9 mm to its left and right, but only about 2 mm below it. A sliding shutter would stick far out past the pod. A lid hinged on the top edge fits.
+
+## Size (defaults)
+
+| | |
 |---|---|
-| `win_w` | Width of the dark camera window along the direction you want it to slide, **including the IR LEDs** next to the lens. Add about 1 mm. |
-| `win_h` | Height of that dark window. Add about 1 mm. |
+| Frame | 36.9 mm wide, 5.2 mm thick at the hinge, 2 mm elsewhere |
+| Lid | covers 31 × 20 mm (window + 1.5 mm overlap) |
+| Needs | 9 mm of flat face above the window, ~4.5 mm on each side |
 
-Also check that the trim around the camera has a fairly flat area of about **(2 × win_w + 16) × (win_h + 15) mm**. The cover slides sideways, so it needs room beside the camera.
+The defaults were estimated from photos with a set square. They're accurate to about ±1.5 mm, so **check with a ruler held flat on the pod** before printing:
 
-## 2. Make your STL
+- `win_w` / `win_h`: the dark window **including its black rim**
+- the space above the window (needs ≥ 9 mm; if less, lower `strip_h`)
 
-- **Option A (no software):** upload `camera-cover.scad` to MakerWorld's *Parametric Model Maker* (OpenSCAD customizer). Enter your values and export.
-- **Option B:** open `camera-cover.scad` in [OpenSCAD](https://openscad.org). Use *Window → Customizer*, set the values, then *Render (F6)* and *Export STL*.
+## Print (Bambu Lab A1)
 
-Set `part` to `assembly_closed` / `assembly_open` to preview the cover put together.
+- **Black PETG** (or ASA). PLA softens behind a windscreen. Use an opaque dark colour, because the camera uses infrared light.
+- 0.2 mm layers, 3 walls, no supports, printed flat as exported.
+- After printing, bend the lid gently to break the hinge free.
+- If the hinge fuses, raise `g` (0.35 → 0.4). If the click is too stiff or too weak, change `det` (0 = no click).
 
-## 3. Print (Bambu Lab A1)
+## Fit
 
-- **Material:** PETG or ASA. PLA warps in a car parked in the sun. Use **black / opaque**, because the camera works with infrared light and some light colours let IR through.
-- Use 0.2 mm layers, 3 walls and 100% infill (the parts are tiny). No supports. Print both parts flat, as exported.
-- **Print a test first.** If the shutter is too tight, raise `gap` (0.25 → 0.3). If it's loose, lower it. For a stronger click, raise `detent_h`. To remove the click, set it to 0.
+1. Peel off the clear protective film tab on the lens if it's still there.
+2. Clean the pod face with isopropyl alcohol.
+3. Stick the frame on with **thin foam VHB tape** (~0.8–1 mm) on the strip and both legs. Put the hinge just above the window's top edge.
 
-## 4. Fit
+To change sizes, open `camera-cover.scad` in OpenSCAD (Window → Customizer) or in MakerWorld's Parametric Model Maker. Set `part = preview` and `open_angle` to see it move.
 
-1. Slide the shutter in from the open end of the rails.
-2. Clean the trim with isopropyl alcohol.
-3. Stick the base on with thin 3M VHB / automotive double-sided tape around the window. Thin foam tape can handle a slightly curved surface.
-
-> Note: this camera is the driver attention/fatigue monitor. When it's covered, the car may show a warning or turn off driver-monitoring features. Open the shutter if you need them.
+> This is the driver attention/fatigue camera. With the lid closed, the car will probably show a warning or switch off driver-monitoring features.
