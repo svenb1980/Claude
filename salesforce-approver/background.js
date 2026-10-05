@@ -75,10 +75,115 @@ async function pendingReports() {
   return pending;
 }
 
+// ── Hours check: everyone in reports.txt must have 40 hours in the hours report ──
+// Runs the saved report through the Analytics API, so its own filters (period, team)
+// apply and the numbers match what the report page shows.
+
+const HOURS_REPORT_ID = '00OQu000005z8FVMAY';
+const HOURS_REQUIRED  = 40;
+
+// "André de Kleijn" and "Kleijn, André de" both become "andre de kleijn" sorted by word
+const nameKey = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+
+const asNumber = cell => {
+  const v = cell?.value && typeof cell.value === 'object' ? cell.value.amount : cell?.value;
+  const n = typeof v === 'number' ? v : parseFloat(String(cell?.label ?? '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
+// Hours per person, from the report's detail rows, or from its groupings when it is
+// grouped by person without details.
+function hoursFromReport(rep) {
+  const ext     = rep.reportExtendedMetadata || {};
+  const columns = rep.reportMetadata?.detailColumns || [];
+  const info    = ext.detailColumnInfo || {};
+  const label   = c => info[c]?.label || c;
+  const numeric = c => ['double', 'currency', 'int', 'percent'].includes(info[c]?.dataType);
+
+  const nameCol  = columns.findIndex(c => /resource|employee|contact|person/i.test(label(c)));
+  const totalCol = columns.findIndex(c => numeric(c) && /total.*hour|hours?$/i.test(label(c)) && !/day$|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(label(c)));
+  const dayCols  = columns.map((c, i) => numeric(c) && /(mon|tues|wednes|thurs|fri|satur|sun)day/i.test(label(c)) ? i : -1).filter(i => i >= 0);
+
+  const hours = new Map(); // nameKey → { name, hours }
+  const add = (name, h) => {
+    const k = nameKey(name);
+    if (!k) return;
+    const e = hours.get(k) || { name, hours: 0 };
+    e.hours += h;
+    hours.set(k, e);
+  };
+
+  if (nameCol >= 0 && (totalCol >= 0 || dayCols.length)) {
+    for (const [key, fact] of Object.entries(rep.factMap || {})) {
+      if (!key.endsWith('!T') || !Array.isArray(fact.rows)) continue;
+      for (const row of fact.rows) {
+        const cells = row.dataCells || [];
+        const h = totalCol >= 0 ? asNumber(cells[totalCol]) : dayCols.reduce((s, i) => s + asNumber(cells[i]), 0);
+        add(cells[nameCol]?.label, h);
+      }
+    }
+    if (hours.size) return hours;
+  }
+
+  // Grouped by person: the first grouping level, with the hours aggregate.
+  const aggs   = rep.reportMetadata?.aggregates || [];
+  const aggIdx = aggs.findIndex(a => /hour/i.test(ext.aggregateColumnInfo?.[a]?.label || a));
+  const groups = rep.groupingsDown?.groupings || [];
+  if (aggIdx >= 0 && groups.length) {
+    for (const g of groups) add(g.label, asNumber(rep.factMap?.[`${g.key}!T`]?.aggregates?.[aggIdx]));
+    return hours;
+  }
+  throw new Error('Could not find a person column and an hours column in the report.');
+}
+
+function reportPeriod(rep) {
+  const f = rep.reportMetadata?.standardDateFilter;
+  if (f?.startDate && f?.endDate) return `${f.startDate} – ${f.endDate}`;
+  return (f?.durationValue || 'report period').replace(/_/g, ' ').toLowerCase();
+}
+
+async function hoursCheck(tabUrl, apiVersion) {
+  const expected = (await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text()))
+    .split('\n').map(n => n.trim()).filter(Boolean);
+
+  const session = await getApiSession(tabUrl);
+  if (!session) throw new Error('No Salesforce API session cookie found.');
+  const url = `${session.instanceUrl}/services/data/${apiVersion || DEFAULT_API_VERSION}`
+            + `/analytics/reports/${HOURS_REPORT_ID}?includeDetails=true`;
+  const res = await fetch(url, { headers: { 'Authorization': `Bearer ${session.sid}`, 'Accept': 'application/json' } });
+  if (!res.ok) throw new Error(`Report API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const rep = await res.json();
+
+  const hours   = hoursFromReport(rep);
+  const missing = expected
+    .map(name => ({ name, hours: Math.round((hours.get(nameKey(name))?.hours ?? 0) * 100) / 100, inReport: hours.has(nameKey(name)) }))
+    .filter(p => p.hours < HOURS_REQUIRED);
+
+  return {
+    period:   reportPeriod(rep),
+    required: HOURS_REQUIRED,
+    checked:  expected.length,
+    missing,
+    truncated: rep.allData === false, // more than 2,000 detail rows: totals may be incomplete
+  };
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  if (msg.action === 'hoursCheck') {
+    hoursCheck(sender.tab?.url, msg.apiVersion)
+      .then(result => sendResponse({ result }))
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
 
   if (msg.action === 'saveReport') {
     (async () => {
+      // A run with nothing approved only carries the hours check: one per period, the latest wins.
+      if (!msg.report.rows?.length && !msg.report.fatal && msg.report.hours) {
+        msg.report.id = `hours-${msg.report.hours.period || 'unknown'}`.replace(/[^\w-]+/g, '-').slice(0, 60);
+      }
       const pending = (await pendingReports()).filter(r => r.id !== msg.report.id);
       pending.push(msg.report);
       await chrome.storage.local.set({ pending: pending.slice(-20) });

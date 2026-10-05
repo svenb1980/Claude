@@ -443,17 +443,49 @@ async function runApproval() {
   log(`✅ Approved : ${approved}`, '#69F0AE');
   log(`🚫 Rejected : ${rejected}`, '#FF7043');
   if (errors) log(`⚠️  Errors   : ${errors}  (see log above)`, '#FFCA28');
-
-  log('', '');
-  log('Overlay closes in 10 s.', '#555');
-  setTitle('⏱ Hours Approver — done');
-  setTimeout(() => overlay?.remove(), 10000);
 }
 
-// Keep a report when something happened (or went wrong); an empty grid is not news.
+// ── Hours check ────────────────────────────────────────────────────────────────
+// background.js runs the hours report; everyone in reports.txt needs 40 hours in it.
+
+async function runHoursCheck() {
+  log('', '');
+  log('📊 Checking the hours report…', '#90CAF9');
+  try {
+    const resp = await chrome.runtime.sendMessage({ action: 'hoursCheck', apiVersion: apiVer() });
+    if (!resp)      throw new Error('No response from background service worker.');
+    if (resp.error) throw new Error(resp.error);
+    const h = resp.result;
+    report.hours = h;
+    log(`   Period: ${h.period}`, '#888');
+    if (h.truncated) log('   ⚠️  Report has more than 2,000 rows — totals may be incomplete.', '#FFCA28');
+    if (!h.missing.length) {
+      log(`🎉 All ${h.checked} people have ${h.required} hours.`, '#69F0AE');
+      return;
+    }
+    log(`⚠️  ${h.missing.length} of ${h.checked} need to fill in hours:`, '#FFCA28');
+    for (const p of h.missing) {
+      log(`  • ${p.name} — ${p.inReport ? `${p.hours}h of ${h.required}h` : 'not in the report'}`, '#FF7043');
+    }
+  } catch (err) {
+    report.hours = { error: err.message };
+    log(`❌ Hours check failed: ${err.message}`, '#FF5252');
+  }
+}
+
+function finish() {
+  const longer = report.hours?.missing?.length;
+  log('', '');
+  log(`Overlay closes in ${longer ? 30 : 10} s.`, '#555');
+  setTitle('⏱ Hours Approver — done');
+  setTimeout(() => overlay?.remove(), longer ? 30000 : 10000);
+}
+
+// Keep a report when something happened, went wrong, or someone is short on hours.
 function saveReport() {
   if (report.cancelled) return;
-  if (!report.rows.length && !report.fatal) return;
+  const hoursNews = report.hours && (report.hours.error || report.hours.missing?.length);
+  if (!report.rows.length && !report.fatal && !hoursNews) return;
   report.finishedAt = Date.now();
   chrome.runtime.sendMessage({ action: 'saveReport', report }).catch(() => {});
 }
@@ -462,6 +494,11 @@ if (!window.__sfApproverRunning) {
   window.__sfApproverRunning = true;
   runApproval()
     .catch(err => { report.fatal = err.message; })
+    .then(async () => {
+      if (report.cancelled) return;
+      await runHoursCheck();
+      finish();
+    })
     .finally(() => {
       saveReport();
       delete window.__sfApproverRunning;

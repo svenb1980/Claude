@@ -1551,6 +1551,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
   // and we acknowledge them once stored. Kept in your private store (rejected names are
   // about people); this browser keeps only the counts.
   const SF_URL = "https://planonsoftware.lightning.force.com/lightning/n/Mass_Approval_Lightning_Component";
+  const SF_HOURS_URL = "https://planonsoftware.lightning.force.com/lightning/r/Report/00OQu000005z8FVMAY/view";
   let sfDoc = null;
   let sfReports = null; // newest first
   const sfClip = (v, n) => String(v ?? "").slice(0, n);
@@ -1562,10 +1563,18 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
       outcome: ["approved", "rejected", "error"].includes(x && x.outcome) ? x.outcome : "error",
       error: sfClip(x && x.error, 200),
     }));
+    const h = r.hours && typeof r.hours === "object" ? r.hours : null;
+    const hours = h && {
+      period: sfClip(h.period, 60), required: num(h.required) || 40, checked: num(h.checked),
+      error: sfClip(h.error, 200), truncated: !!h.truncated,
+      missing: (Array.isArray(h.missing) ? h.missing : []).slice(0, 100).map(m => ({
+        name: sfClip(m && m.name, 120), hours: Math.max(0, +(m && m.hours) || 0), inReport: !!(m && m.inReport) })),
+    };
     return { id: sfClip(r.id, 64), finishedAt: num(r.finishedAt) || Date.now(), auto: !!r.auto,
-      approved: num(r.approved), rejected: num(r.rejected), errors: num(r.errors), fatal: sfClip(r.fatal, 300), rows };
+      approved: num(r.approved), rejected: num(r.rejected), errors: num(r.errors), fatal: sfClip(r.fatal, 300), rows, hours };
   }
-  const sfCounts = r => Object.assign({}, r, { rows: [] });
+  // The browser copy keeps counts only: no names of rejected timecards or of people short on hours.
+  const sfCounts = r => Object.assign({}, r, { rows: [], hours: r.hours && Object.assign({}, r.hours, { missing: [], short: r.hours.missing.length }) });
   async function readSf() {
     await Promise.race([syncReadyP, new Promise(r => setTimeout(r, 5000))]);
     if (sfDoc) {
@@ -1577,9 +1586,31 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
     store.set("ad.sf", sfReports.map(sfCounts));
     if (sfDoc) await sfDoc.set({ reports: sfReports });
   }
+  const sfHash = t => { let h = 5381; for (const c of String(t)) h = (h * 33 + c.charCodeAt(0)) >>> 0; return h.toString(36); };
+  // The hours check of one report: one row per period and list of people, so a changed list shows as new.
+  function sfHoursItem(r) {
+    const h = r.hours;
+    const who = r.auto ? "Hours Approver ran automatically" : "Hours Approver";
+    const base = { source: "salesforce", ref: r.id, tag: "Hours", who, when: new Date(r.finishedAt), url: SF_HOURS_URL, next: "", actions: ["open"] };
+    if (h.error) return Object.assign(base, { id: "salesforce:hours-error:" + r.id, title: "Hours check didn't work", snippet: h.error, priority: "medium" });
+    if (!h.missing.length) return null;
+    const list = h.missing.map(m => `${m.name} (${m.inReport ? m.hours + "h" : "not in the report"})`);
+    const n = h.missing.length;
+    return Object.assign(base, {
+      id: "salesforce:hours:" + sfHash(h.period + "|" + h.missing.map(m => m.name + ":" + m.hours).join(",")),
+      title: `${n} ${n === 1 ? "person needs" : "people need"} to fill in hours`,
+      snippet: `Under ${h.required} hours for ${h.period}: ${list.join(", ")}.${h.truncated ? " The report was too long to read in full, so check it." : ""}`,
+      priority: "medium",
+    });
+  }
   function sfItems() {
     const since = Date.now() - 7 * 86400000;
-    return (sfReports || []).filter(r => r.finishedAt > since).map(r => {
+    const recent = (sfReports || []).filter(r => r.finishedAt > since);
+    const periods = new Set();
+    const hoursItems = recent.filter(r => r.hours && !r.hours.error && !periods.has(r.hours.period) && periods.add(r.hours.period)) // newest per period
+      .concat(recent.filter(r => r.hours && r.hours.error).slice(0, 1))
+      .map(sfHoursItem).filter(Boolean);
+    return hoursItems.concat(recent.filter(r => r.rows.length || r.fatal).map(r => {
       const names = o => [...new Set(r.rows.filter(x => x.outcome === o).map(x => x.label))];
       const rej = names("rejected"), err = names("error");
       const title = r.fatal ? "Hours approval didn't finish"
@@ -1596,7 +1627,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
         when: new Date(r.finishedAt), snippet: parts.join(" "), url: SF_URL,
         priority: (r.fatal || r.errors) ? "high" : r.rejected ? "medium" : "low", next: "", actions: ["open"],
       };
-    });
+    }));
   }
   const sfHello = () => window.postMessage({ source: "action-desk", type: "hello" }, "*");
   async function loadSalesforce() {
