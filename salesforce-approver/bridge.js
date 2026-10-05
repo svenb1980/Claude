@@ -5,6 +5,9 @@
 //   bridge      → { source: 'sf-approver', type: 'reports', reports: [...] }
 //   Action Desk → { source: 'action-desk', type: 'ack', ids: [...] }   (after storing them)
 
+if (!window.__sfApproverBridge) {
+window.__sfApproverBridge = true; // injected again on extension update: listen once
+
 window.addEventListener('message', async e => {
   if (e.source !== window || !e.data || e.data.source !== 'action-desk') return;
 
@@ -18,3 +21,4 @@ window.addEventListener('message', async e => {
     }
   } catch { /* extension reloaded: this page needs a refresh to reconnect */ }
 });
+}

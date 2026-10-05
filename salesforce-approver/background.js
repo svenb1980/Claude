@@ -66,6 +66,15 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
 
 chrome.tabs.onRemoved.addListener(tabId => lastAutoRun.delete(tabId));
 
+// Chrome only adds manifest content scripts to pages opened after an install or update:
+// put the bridge into claude.ai tabs that are already open, so Action Desk needs no reload.
+chrome.runtime.onInstalled.addListener(async () => {
+  const pages = chrome.runtime.getManifest().content_scripts?.[0]?.matches || [];
+  for (const tab of await chrome.tabs.query({ url: pages })) {
+    chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['bridge.js'] }).catch(() => {});
+  }
+});
+
 // ── Reports waiting for Action Desk ───────────────────────────────────────────
 // content.js saves a report after each run; bridge.js (running inside the Action
 // Desk artifact) collects them and acknowledges once Action Desk has stored them.
