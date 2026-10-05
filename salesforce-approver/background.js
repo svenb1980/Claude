@@ -79,6 +79,19 @@ chrome.runtime.onInstalled.addListener(async () => {
 // content.js saves a report after each run; bridge.js (running inside the Action
 // Desk artifact) collects them and acknowledges once Action Desk has stored them.
 
+// Hand new reports to any open Action Desk right away (bridge.js passes them on).
+async function pushToActionDesk() {
+  const pages = chrome.runtime.getManifest().content_scripts?.[0]?.matches || [];
+  for (const tab of await chrome.tabs.query({ url: pages })) {
+    chrome.tabs.sendMessage(tab.id, { action: 'pushReports' }).catch(() => {});
+  }
+}
+
+// One change to the waiting list at a time: a report saved while an ack is being
+// handled must not be lost (both read the list, change it and write it back).
+let pendingChain = Promise.resolve();
+const withPending = fn => (pendingChain = pendingChain.then(fn, fn));
+
 async function pendingReports() {
   const { pending = [] } = await chrome.storage.local.get('pending');
   return pending;
@@ -188,7 +201,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.action === 'saveReport') {
-    (async () => {
+    withPending(async () => {
       // A run with nothing approved only carries the hours check: one per period, the latest wins.
       if (!msg.report.rows?.length && !msg.report.fatal && msg.report.hours) {
         msg.report.id = `hours-${msg.report.hours.period || 'unknown'}`.replace(/[^\w-]+/g, '-').slice(0, 60);
@@ -197,7 +210,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       pending.push(msg.report);
       await chrome.storage.local.set({ pending: pending.slice(-20) });
       sendResponse({ ok: true });
-    })();
+      pushToActionDesk();
+    });
     return true;
   }
 
@@ -207,12 +221,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.action === 'bridgeAck') {
-    (async () => {
+    withPending(async () => {
       const ids = new Set(msg.ids || []);
       const pending = (await pendingReports()).filter(r => !ids.has(r.id));
       await chrome.storage.local.set({ pending, lastDelivered: Date.now() });
       sendResponse({ ok: true });
-    })();
+    });
     return true;
   }
 
