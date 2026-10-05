@@ -11,7 +11,7 @@ chrome.storage.local.get(['autoRun', 'pending', 'lastDelivered']).then(({ autoRu
   const when = lastDelivered ? new Date(lastDelivered).toLocaleString() : 'never';
   deskStatus.textContent = pending.length
     ? `${pending.length} report(s) waiting for Action Desk — it picks them up as soon as it is open in this browser. Last delivered: ${when}.`
-    : `Action Desk is up to date. Last delivered: ${when}.`;
+    : lastDelivered ? `✓ All reports are in Action Desk. Last one delivered ${when}.` : 'No reports yet.';
 });
 autoRun.addEventListener('change', () => chrome.storage.local.set({ autoRun: autoRun.checked }));
 
