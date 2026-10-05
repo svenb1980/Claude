@@ -1,13 +1,15 @@
 André de Kleijn
 Anton van Dartel
 Ayaz Rachmadiev
-Bart van Ommen
+Cas van Summeren
 Christopher Peters
 Davy Koravand
 Donneh Huwae
 Erwin Kroekenstoel
+Florian Peters
 Henk te Winkel
 Heske Polman
+IJsbert Smant
 Jeffrey Derksen
 Kim van Heel
 Mark McBride
@@ -15,6 +17,7 @@ Nirankumar Veeramusti Kotteswaradu
 Nivrutha Balaji
 Pim Haerkens
 Silvio Bierman
+Sven Schriever
 Tim Schouten
 Wim Heuts
 Wouter van der Aa
