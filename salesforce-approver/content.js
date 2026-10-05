@@ -262,12 +262,18 @@ async function runApproval() {
 
     let assignMap = {};
     let processed = 0;
+    const attempted = new Set(); // ids already handled — a row that stays put means it failed
     // Loop over the *current* first row repeatedly until the grid is empty
     while (true) {
       const row = bryntumRoot.querySelector('.b-grid-row[role="row"][data-id]');
       if (!row) { log('No more rows in grid.', '#888'); break; }
 
       const id    = row.dataset.id;
+      if (attempted.has(id)) {
+        log(`Row ${id} is still in the grid after processing — stopping to avoid a loop.`, '#FF5252');
+        break;
+      }
+      attempted.add(id);
       const label = row.querySelector('[data-column-id="col-name"] a')?.textContent?.trim() ?? id;
 
       // Ensure we have assignment info for this record (fetch per-record if missing)
@@ -288,7 +294,7 @@ async function runApproval() {
       log(`   Assignment: "${info.name}"`, '#aaa');
 
       try {
-        // Step 1: click the  on the first row
+        // Step 1: click the checkbox on the first row
         // Selector confirmed: input[type="checkbox"][data-op-ignore="true"] inside the row
         const chk = row.querySelector('input[type="checkbox"][data-op-ignore="true"]');
         if (chk) {
