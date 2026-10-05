@@ -105,18 +105,25 @@ function getLightningBtn(maRoot, dataId) {
 }
 
 // ── Salesforce REST API helpers ────────────────────────────────────────────────
-// Content scripts run on the Salesforce origin, so the browser automatically
-// attaches the sid cookie to same-origin fetch() calls.
-// X-Requested-With prevents Salesforce from treating it as a CSRF attempt.
-
-const SF_HEADERS = {
-  'X-Requested-With': 'XMLHttpRequest',
-  'Accept':           'application/json',
-};
+// The query itself runs in background.js: the sid cookie on *.lightning.force.com
+// is a Lightning-only session that /services/data rejects (INVALID_SESSION_ID), and
+// calling the org's *.my.salesforce.com instance domain from here would be blocked
+// by CORS. The service worker has host permissions for both and bypasses CORS.
 
 // Try to read the API version the page uses; fall back to v59.0
 function apiVer() {
   return window.Salesforce?.settings?.apiVersion ?? 'v59.0';
+}
+
+async function soqlQuery(soql) {
+  const resp = await chrome.runtime.sendMessage({
+    action:     'soqlQuery',
+    soql,
+    apiVersion: apiVer(),
+  });
+  if (!resp)       throw new Error('No response from background service worker.');
+  if (resp.error)  throw new Error(resp.error);
+  return resp.data;
 }
 
 // ── Batch-fetch Assignment names ───────────────────────────────────────────────
@@ -127,14 +134,8 @@ async function fetchAssignments(recordIds) {
                + `FROM pse__Timecard_Header__c `
                + `WHERE Id IN (${idList})`;
 
-  const res = await fetch(
-    `/services/data/${apiVer()}/query/?q=${encodeURIComponent(soql)}`,
-    { headers: SF_HEADERS }
-  );
+  const data = await soqlQuery(soql);
 
-  if (!res.ok) throw new Error(`API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-
-  const data = await res.json();
   const map  = {};
   for (const rec of data.records) {
     const name = rec.pse__Assignment__r?.Name ?? '';
@@ -253,52 +254,41 @@ async function runApproval() {
     }
     log('✓ Grid located.', '#69F0AE');
 
-    // ── 2. Snapshot record IDs for batch API lookup ──────────────────────────
-    // We only read IDs now; we re-query the live DOM each iteration because
-    // the grid removes a row after it is approved/rejected.
-    const initialRows = Array.from(
-      bryntumRoot.querySelectorAll('.b-grid-row[role="row"][data-id]')
-    );
-    const total     = initialRows.length;
-    const recordIds = initialRows.map(r => r.dataset.id);
+    // ── 2. Process rows until none remain ───────────────────────────────────
+    // The Bryntum grid virtualizes DOM rows (renders only visible rows).
+    // Snapshotting rendered rows can miss items (commonly ~19 visible rows).
+    // Instead, iterate until no more rows are present and fetch assignment
+    // info per-record on-demand.
 
-    if (total === 0) {
-      log('No pending approval rows — skipping to hours check.', '#FFCA28');
-    } else {
-      log(`Found ${total} row(s). Fetching assignment names via API…`, '#90CAF9');
-    }
-
-    // ── 3 & 4. Batch-fetch + process rows (only if there are any) ────────────
     let assignMap = {};
-    if (total > 0) {
-      try {
-        assignMap = await fetchAssignments(recordIds);
-        log(`✓ Assignment data ready (${Object.keys(assignMap).length} records).`, '#69F0AE');
-      } catch (apiErr) {
-        log(`⚠️  API error: ${apiErr.message}`, '#FFCA28');
-        log('   Treating all assignments as non-overhead (safe fallback).', '#888');
-        for (const id of recordIds) assignMap[id] = { name: '(unknown)', isOverhead: false };
-      }
-    }
-
-    // ── 4. Process each row ──────────────────────────────────────────────────
-    // After each approval the processed row disappears, so always target the
-    // current FIRST row in the live grid rather than holding stale references.
-    for (let i = 0; i < total; i++) {
-      // Re-query the grid for the current first row
+    let processed = 0;
+    // Loop over the *current* first row repeatedly until the grid is empty
+    while (true) {
       const row = bryntumRoot.querySelector('.b-grid-row[role="row"][data-id]');
       if (!row) { log('No more rows in grid.', '#888'); break; }
 
       const id    = row.dataset.id;
-      const info  = assignMap[id] ?? { name: '(not in API result)', isOverhead: false };
       const label = row.querySelector('[data-column-id="col-name"] a')?.textContent?.trim() ?? id;
 
+      // Ensure we have assignment info for this record (fetch per-record if missing)
+      if (!assignMap[id]) {
+        try {
+          const single = await fetchAssignments([id]);
+          assignMap[id] = single[id] ?? { name: '(unknown)', isOverhead: false };
+        } catch (apiErr) {
+          log(`⚠️  API error fetching ${id}: ${apiErr.message}`, '#FFCA28');
+          assignMap[id] = { name: '(unknown)', isOverhead: false };
+        }
+      }
+
+      const info = assignMap[id] ?? { name: '(not in API result)', isOverhead: false };
+
       log('', '');
-      log(`── ${i + 1}/${total}: ${label}`, '#90CAF9');
+      log(`── ${processed + 1}: ${label}`, '#90CAF9');
       log(`   Assignment: "${info.name}"`, '#aaa');
 
       try {
-        // Step 1: click the checkbox on the first row
+        // Step 1: click the  on the first row
         // Selector confirmed: input[type="checkbox"][data-op-ignore="true"] inside the row
         const chk = row.querySelector('input[type="checkbox"][data-op-ignore="true"]');
         if (chk) {
@@ -376,6 +366,10 @@ async function runApproval() {
 
         await sleep(7000); // wait for SF to process and grid to refresh before next row
 
+        // Count this processed row and guard against runaway loops
+        processed++;
+        if (processed > 5000) { log('Aborting: processed > 5000 rows (safety cap).', '#FF5252'); break; }
+
       } catch (err) {
         log(`   ❌ ${err.message}`, '#FF5252');
         errors++;
@@ -394,9 +388,9 @@ async function runApproval() {
   if (errors) log(`⚠️  Errors   : ${errors}  (see log above)`, '#FFCA28');
 
   log('', '');
-  log('Overlay closes in 30 s.', '#555');
+  log('Overlay closes in 10 s.', '#555');
   setTitle('⏱ Hours Approver — done');
-  setTimeout(() => overlay?.remove(), 30000);
+  setTimeout(() => overlay?.remove(), 10000);
 }
 
 if (!window.__sfApproverRunning) {
