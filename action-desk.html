@@ -1587,7 +1587,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
     if (sfDoc) await sfDoc.set({ reports: sfReports });
   }
   const sfHash = t => { let h = 5381; for (const c of String(t)) h = (h * 33 + c.charCodeAt(0)) >>> 0; return h.toString(36); };
-  // The hours check of one report: one row per period and list of people, so a changed list shows as new.
+  // The hours check of one report: each run that finds people short gives a new row (only the newest per period shows).
   function sfHoursItem(r) {
     const h = r.hours;
     const who = r.auto ? "Hours Approver ran automatically" : "Hours Approver";
@@ -1597,7 +1597,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
     const list = h.missing.map(m => `${m.name} (${m.inReport ? m.hours + "h" : "not in the report"})`);
     const n = h.missing.length;
     return Object.assign(base, {
-      id: "salesforce:hours:" + sfHash(h.period + "|" + h.missing.map(m => m.name + ":" + m.hours).join(",")),
+      id: "salesforce:hours:" + sfHash(h.period + "|" + r.finishedAt), // every run's result is new, even when unchanged
       title: `${n} ${n === 1 ? "person needs" : "people need"} to fill in hours`,
       snippet: `Under ${h.required} hours for ${h.period}: ${list.join(", ")}.${h.truncated ? " The report was too long to read in full, so check it." : ""}`,
       priority: "medium",
