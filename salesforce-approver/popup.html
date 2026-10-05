@@ -55,6 +55,8 @@
 
     #status.error  { color: #FF5252; }
     #status.ok     { color: #69F0AE; }
+    .opt { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: #ccc; cursor: pointer; }
+    #deskStatus { margin-top: 8px; font-size: 11px; color: #888; }
   </style>
 </head>
 <body>
@@ -62,6 +64,8 @@
   <p>Navigates to Mass Approval, rejects overhead assignments, approves the rest.</p>
   <button id="approveBtn">✅ Approve Hours</button>
   <div id="status"></div>
+  <label class="opt"><input type="checkbox" id="autoRun"> Run automatically when Mass Approval opens</label>
+  <div id="deskStatus"></div>
   <script src="popup.js"></script>
 </body>
 </html>

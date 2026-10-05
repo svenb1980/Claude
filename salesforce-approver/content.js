@@ -1,3 +1,6 @@
+// Wrapped so the script can be injected again into the same page (top-level const would clash).
+(() => {
+
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -220,10 +223,53 @@ const REJECT_DIALOG = {
   confirmBtnInner: 'button[title="Reject Timecard"]',
 };
 
+// ── Run report (handed to Action Desk via background.js → bridge.js) ─────────
+
+const report = {
+  id:        `sf-${Date.now()}`,
+  startedAt: Date.now(),
+  auto:      !!window.__sfApproverAuto,
+  approved:  0, rejected: 0, errors: 0,
+  rows:      [],   // { label, assignment, outcome: 'approved' | 'rejected' | 'error', error? }
+  fatal:     '',
+};
+
+function fatal(msg) {
+  report.fatal = msg;
+  log(`❌ ${msg}`, '#FF5252');
+}
+
+// Automatic runs wait a moment so you can still stop them.
+async function countdown(seconds) {
+  let cancelled = false;
+  const line = document.createElement('div');
+  line.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:12px;color:#FFCA28;margin-bottom:8px';
+  const text = document.createElement('span');
+  const stop = document.createElement('button');
+  stop.textContent   = 'Cancel';
+  stop.style.cssText = 'background:#3a2a10;color:#FFCA28;border:1px solid #FFCA28;border-radius:6px;cursor:pointer;padding:2px 10px;font:inherit';
+  stop.onclick       = () => { cancelled = true; };
+  line.append(text, stop);
+  logEl.appendChild(line);
+  for (let s = seconds; s > 0 && !cancelled; s--) {
+    text.textContent = `Mass Approval opened — starting automatically in ${s} s…`;
+    await sleep(1000);
+  }
+  line.remove();
+  return !cancelled;
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 async function runApproval() {
   createOverlay();
+  if (report.auto && !(await countdown(10))) {
+    report.cancelled = true;
+    setTitle('⏱ Hours Approver — cancelled');
+    log('Cancelled. Use the extension button to run it later.', '#888');
+    setTimeout(() => overlay?.remove(), 5000);
+    return;
+  }
   await sleep(4000);
 
   let approved = 0, rejected = 0, errors = 0;
@@ -233,7 +279,7 @@ async function runApproval() {
     log('Locating Mass Approval component…', '#666');
     const maRoot = getMassApprovalRoot();
     if (!maRoot) {
-      log('❌ Could not reach pse-ma_mass-approval shadow root.', '#FF5252');
+      fatal('Could not reach pse-ma_mass-approval shadow root.');
       log('   Verify CHAIN_TO_MA in content.js matches the current page.', '#888');
       return;
     }
@@ -248,7 +294,7 @@ async function runApproval() {
       await sleep(2000);
     }
     if (!bryntumRoot) {
-      log('❌ Could not reach Bryntum grid after 4 attempts.', '#FF5252');
+      fatal('Could not reach Bryntum grid after 4 attempts.');
       log('   Check that the Mass Approval page is fully loaded before clicking the button.', '#888');
       return;
     }
@@ -333,6 +379,7 @@ async function runApproval() {
           await sleep(2500);
 
           rejected++;
+          report.rows.push({ label, assignment: info.name, outcome: 'rejected' });
           log('   ✓ Rejected.', '#FF7043');
 
         } else {
@@ -367,6 +414,7 @@ async function runApproval() {
           }
 
           approved++;
+          report.rows.push({ label, assignment: info.name, outcome: 'approved' });
           log('   ✓ Approved.', '#69F0AE');
         }
 
@@ -379,12 +427,15 @@ async function runApproval() {
       } catch (err) {
         log(`   ❌ ${err.message}`, '#FF5252');
         errors++;
+        report.rows.push({ label, assignment: info.name, outcome: 'error', error: err.message });
       }
     }
 
   } catch (err) {
     log(`\n❌ Fatal: ${err.message}`, '#FF5252');
+    report.fatal = err.message;
   }
+  Object.assign(report, { approved, rejected, errors });
 
   // ── Approval summary ───────────────────────────────────────────────────────
   log('', '');
@@ -399,7 +450,23 @@ async function runApproval() {
   setTimeout(() => overlay?.remove(), 10000);
 }
 
+// Keep a report when something happened (or went wrong); an empty grid is not news.
+function saveReport() {
+  if (report.cancelled) return;
+  if (!report.rows.length && !report.fatal) return;
+  report.finishedAt = Date.now();
+  chrome.runtime.sendMessage({ action: 'saveReport', report }).catch(() => {});
+}
+
 if (!window.__sfApproverRunning) {
   window.__sfApproverRunning = true;
-  runApproval().finally(() => delete window.__sfApproverRunning);
+  runApproval()
+    .catch(err => { report.fatal = err.message; })
+    .finally(() => {
+      saveReport();
+      delete window.__sfApproverRunning;
+      delete window.__sfApproverAuto;
+    });
 }
+
+})();

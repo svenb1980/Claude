@@ -33,6 +33,7 @@
     --src-jira: #1f6fd1;
     --src-wiki: #0f7c85;
     --src-report: #a3471f;
+    --src-sf: #0b6e99;
     --focus: #0e6b66;
     --sans: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -65,6 +66,7 @@
       --src-jira: #7fb1f2;
       --src-wiki: #6fcad2;
       --src-report: #f0a07c;
+      --src-sf: #6cc4ea;
       --focus: #4fb8b0;
     }
   }
@@ -95,6 +97,7 @@
     --src-jira: #7fb1f2;
     --src-wiki: #6fcad2;
     --src-report: #f0a07c;
+    --src-sf: #6cc4ea;
     --focus: #4fb8b0;
   }
 
@@ -203,7 +206,7 @@
   li.row.busy { opacity: .6; }
   .src { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; overflow-wrap: anywhere; line-height: 1.3; }
   .src.mail { color: var(--src-mail); } .src.meeting { color: var(--src-meet); } .src.teams { color: var(--src-teams); }
-  .src.jira { color: var(--src-jira); } .src.report { color: var(--src-report); } .src.confluence { color: var(--src-wiki); }
+  .src.jira { color: var(--src-jira); } .src.report { color: var(--src-report); } .src.confluence { color: var(--src-wiki); } .src.salesforce { color: var(--src-sf); }
   .rmain { min-width: 0; display: flex; flex-direction: column; }
   .rtitle { font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .rmeta { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -440,6 +443,7 @@
     jira:       { label: "Jira",       server: AT, color: "var(--src-jira)" },
     confluence: { label: "Confluence", server: AT, color: "var(--src-wiki)" },
     report:     { label: "Team updates", server: AT, color: "var(--src-report)" },
+    salesforce: { label: "Salesforce", server: "Hours Approver extension", color: "var(--src-sf)" },
   };
   const PRIO_ORDER = { high: 0, medium: 1, low: 2 };
   const GROUPS = [
@@ -1541,6 +1545,82 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
     }
   }
 
+  // ---------- Salesforce Hours Approver (Chrome extension) ----------
+  // The extension approves timecards when Mass Approval opens and keeps a report of each run.
+  // Its bridge script runs inside this page: we say hello, it hands over the waiting reports,
+  // and we acknowledge them once stored. Kept in your private store (rejected names are
+  // about people); this browser keeps only the counts.
+  const SF_URL = "https://planonsoftware.lightning.force.com/lightning/n/Mass_Approval_Lightning_Component";
+  let sfDoc = null;
+  let sfReports = null; // newest first
+  const sfClip = (v, n) => String(v ?? "").slice(0, n);
+  function sfClean(r) {
+    if (!r || typeof r !== "object" || typeof r.id !== "string") return null;
+    const num = v => Math.max(0, Math.floor(+v || 0));
+    const rows = (Array.isArray(r.rows) ? r.rows : []).slice(0, 500).map(x => ({
+      label: sfClip(x && x.label, 120), assignment: sfClip(x && x.assignment, 120),
+      outcome: ["approved", "rejected", "error"].includes(x && x.outcome) ? x.outcome : "error",
+      error: sfClip(x && x.error, 200),
+    }));
+    return { id: sfClip(r.id, 64), finishedAt: num(r.finishedAt) || Date.now(), auto: !!r.auto,
+      approved: num(r.approved), rejected: num(r.rejected), errors: num(r.errors), fatal: sfClip(r.fatal, 300), rows };
+  }
+  const sfCounts = r => Object.assign({}, r, { rows: [] });
+  async function readSf() {
+    await Promise.race([syncReadyP, new Promise(r => setTimeout(r, 5000))]);
+    if (sfDoc) {
+      try { const snap = await sfDoc.get(); if (snap.exists) return (JSON.parse(JSON.stringify(snap.data())).reports || []).map(sfClean).filter(Boolean); } catch { /* fall back */ }
+    }
+    return store.get("ad.sf", []).map(sfClean).filter(Boolean);
+  }
+  async function saveSf() {
+    store.set("ad.sf", sfReports.map(sfCounts));
+    if (sfDoc) await sfDoc.set({ reports: sfReports });
+  }
+  function sfItems() {
+    const since = Date.now() - 7 * 86400000;
+    return (sfReports || []).filter(r => r.finishedAt > since).map(r => {
+      const names = o => [...new Set(r.rows.filter(x => x.outcome === o).map(x => x.label))];
+      const rej = names("rejected"), err = names("error");
+      const title = r.fatal ? "Hours approval didn't finish"
+        : r.errors ? `Hours approval: ${r.errors} timecard${r.errors === 1 ? " needs" : "s need"} a look`
+        : r.rejected ? `Hours approved, ${r.rejected} rejected as overhead`
+        : `Hours approved: ${r.approved} timecard${r.approved === 1 ? "" : "s"}`;
+      const parts = [`${r.approved} approved, ${r.rejected} rejected, ${r.errors} with errors.`];
+      if (r.fatal) parts.push(r.fatal);
+      if (err.length) parts.push(`Couldn't process: ${err.join(", ")}.`);
+      if (rej.length) parts.push(`Rejected as overhead: ${rej.join(", ")}. They were asked to resubmit.`);
+      return {
+        id: "salesforce:" + r.id, source: "salesforce", ref: r.id, tag: "Hours",
+        title, who: r.auto ? "Hours Approver ran automatically" : "Hours Approver",
+        when: new Date(r.finishedAt), snippet: parts.join(" "), url: SF_URL,
+        priority: (r.fatal || r.errors) ? "high" : r.rejected ? "medium" : "low", next: "", actions: ["open"],
+      };
+    });
+  }
+  const sfHello = () => window.postMessage({ source: "action-desk", type: "hello" }, "*");
+  async function loadSalesforce() {
+    if (!sfReports) sfReports = await readSf();
+    setItems("salesforce", sfItems());
+    sfHello();
+  }
+  let sfChain = Promise.resolve();
+  window.addEventListener("message", e => {
+    if (e.source !== window || !e.data || e.data.source !== "sf-approver" || e.data.type !== "reports") return;
+    const incoming = (Array.isArray(e.data.reports) ? e.data.reports : []).slice(0, 50).map(sfClean).filter(Boolean);
+    if (!incoming.length) return;
+    sfChain = sfChain.then(async () => {
+      if (!sfReports) sfReports = await readSf();
+      const byId = new Map(sfReports.map(r => [r.id, r]));
+      for (const r of incoming) byId.set(r.id, r);
+      sfReports = [...byId.values()].sort((a, b) => b.finishedAt - a.finishedAt).slice(0, 20);
+      try { await saveSf(); } catch { return; } // not stored: the extension keeps them for next time
+      window.postMessage({ source: "action-desk", type: "ack", ids: incoming.map(r => r.id) }, "*");
+      setItems("salesforce", sfItems());
+      render();
+    }).catch(() => {});
+  });
+
   async function refreshAll(fresh) {
     if (!state.mcp) return;
     try {
@@ -1555,6 +1635,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
       withSection("jira", loadJira, fresh),
       withSection("confluence", loadConfluence, fresh),
       withSection("report", loadReport, fresh),
+      withSection("salesforce", loadSalesforce, fresh),
     ]);
     await autoRank();
   }
@@ -1568,7 +1649,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
     ext: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
   };
   const isNarrow = () => window.matchMedia("(max-width: 900px)").matches;
-  const OPEN_LABEL = { mail: "Open in Outlook", meeting: "Open in Outlook", teams: "Open in Teams", jira: "Open in Jira", confluence: "Open page", report: "Open in Jira" };
+  const OPEN_LABEL = { mail: "Open in Outlook", meeting: "Open in Outlook", teams: "Open in Teams", jira: "Open in Jira", confluence: "Open page", report: "Open in Jira", salesforce: "Open in Salesforce" };
 
   function snoozeOptions() {
     const n = new Date();
@@ -2380,7 +2461,7 @@ Return a JSON array: [{"id": "...", "priority": "high|medium|low", "next": "..."
   }
 
   // ---------- events ----------
-  const LOADERS = { mail: loadMail, meeting: loadMeetings, teams: loadTeams, jira: loadJira, confluence: loadConfluence, report: loadReport };
+  const LOADERS = { mail: loadMail, meeting: loadMeetings, teams: loadTeams, jira: loadJira, confluence: loadConfluence, report: loadReport, salesforce: loadSalesforce };
   function retry(src) {
     if (src === "report") forceReport = true; // Try again on the team update really retries, even after a failure today
     withSection(src, LOADERS[src], true).then(() => src === "mail" ? autoTriage() : null).then(() => autoRank());
@@ -2634,6 +2715,7 @@ Return a JSON array: [{"id": "...", "priority": "high|medium|low", "next": "..."
   const tick = () => {
     if (!$("#menu").hidden) return; // don't redraw under an open snooze menu
     renderHeader(); render();
+    sfHello();
   };
   setInterval(tick, 60000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(); });
@@ -2646,6 +2728,7 @@ Return a JSON array: [{"id": "...", "priority": "high|medium|low", "next": "..."
       const uid = await user.id();
       if (!uid) return;
       reportDoc = db.doc("data/users/" + uid + "/teamreport");
+      sfDoc = db.doc("data/users/" + uid + "/sfapprover");
       const tref = db.doc("data/users/" + uid + "/triage");
       let tfirst = true;
       tref.onSnapshot(snap => {

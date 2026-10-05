@@ -41,7 +41,66 @@ async function getApiSession(tabUrl) {
   };
 }
 
+// ── Auto-run when the Mass Approval page opens ────────────────────────────────
+// Lightning is a single-page app, so a manifest content script would miss in-app
+// navigation. tabs.onUpdated reports both full loads and in-app URL changes.
+
+const MASS_APPROVAL = /^https:\/\/[^/]+\.lightning\.force\.com\/lightning\/n\/Mass_Approval_Lightning_Component/;
+const lastAutoRun   = new Map(); // tabId → ms; one automatic start per tab per minute
+
+chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+  if (info.status !== 'complete' && !info.url) return;
+  if (!MASS_APPROVAL.test(tab.url || '')) return;
+
+  const { autoRun = true } = await chrome.storage.local.get('autoRun');
+  if (!autoRun) return;
+  if (Date.now() - (lastAutoRun.get(tabId) || 0) < 60000) return;
+  lastAutoRun.set(tabId, Date.now());
+
+  await new Promise(r => setTimeout(r, 4000)); // let Lightning and the LWC components boot
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, func: () => { window.__sfApproverAuto = true; } });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+  } catch (e) { /* tab closed or navigated away */ }
+});
+
+chrome.tabs.onRemoved.addListener(tabId => lastAutoRun.delete(tabId));
+
+// ── Reports waiting for Action Desk ───────────────────────────────────────────
+// content.js saves a report after each run; bridge.js (running inside the Action
+// Desk artifact) collects them and acknowledges once Action Desk has stored them.
+
+async function pendingReports() {
+  const { pending = [] } = await chrome.storage.local.get('pending');
+  return pending;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  if (msg.action === 'saveReport') {
+    (async () => {
+      const pending = (await pendingReports()).filter(r => r.id !== msg.report.id);
+      pending.push(msg.report);
+      await chrome.storage.local.set({ pending: pending.slice(-20) });
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  if (msg.action === 'bridgePending') {
+    pendingReports().then(reports => sendResponse({ reports }));
+    return true;
+  }
+
+  if (msg.action === 'bridgeAck') {
+    (async () => {
+      const ids = new Set(msg.ids || []);
+      const pending = (await pendingReports()).filter(r => !ids.has(r.id));
+      await chrome.storage.local.set({ pending, lastDelivered: Date.now() });
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
 
   // Run a SOQL query against the Salesforce REST API on the org's instance domain.
   if (msg.action === 'soqlQuery') {

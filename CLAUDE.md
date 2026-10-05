@@ -11,6 +11,7 @@ This is a scratch/personal project directory containing three standalone files:
 | `tictactoe.html` | Browser-based two-player Tic Tac Toe with score tracking |
 | `action-desk.html` | Source of the "Action Desk" claude.ai artifact (Outlook, Teams, Jira and Confluence action list with daily team updates). Only works when published as an artifact with the Microsoft 365 and Atlassian connectors |
 | `banana-quest.html` | Top-down Zelda-style HTML5 Canvas game (banana protagonist, apple enemies) |
+| `salesforce-approver/` | Chrome extension (MV3) that approves Salesforce timecards when the Mass Approval page opens and hands a report of each run to Action Desk through `bridge.js` (a content script on claude.ai frames; window.postMessage hello → reports → ack) |
 | `toilet-display.yaml` | ESPHome config for an ESP32 + Waveshare 1.54" e-ink toilet occupancy display |
 
 ## Git Workflow
