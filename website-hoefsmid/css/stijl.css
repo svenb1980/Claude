@@ -1,0 +1,419 @@
+/* =========================================================
+   Stijlen voor de website "Informatie Hoefsmid"
+   Kleuren en lettertypen staan bovenaan, zo pas je ze makkelijk aan.
+   ========================================================= */
+
+:root {
+  --grijs: #dddbd7;        /* achtergrond voorpagina */
+  --krant: #e9e7e2;        /* achtergrond krantenpagina's */
+  --papier: #f4f0e7;       /* notitiepapier */
+  --polaroid: #f7f6f2;     /* witte fotorand */
+  --kraft: #b48d64;        /* bruin kraftpapier */
+  --kraft-donker: #9c7550;
+  --inkt: #2b2926;         /* tekstkleur */
+  --inkt-zacht: #5d5750;
+  --tape: #c8a07a;         /* washi tape */
+
+  --kop: "Rye", "Rockwell", Georgia, serif;
+  --hand: "Homemade Apple", "Segoe Script", cursive;
+  --tekst: "Alice", "Georgia", "Times New Roman", serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--grijs); }
+body {
+  margin: 0;
+  color: var(--inkt);
+  font-family: var(--tekst);
+  font-size: 1.125rem;
+  line-height: 1.6;
+  background: var(--grijs);
+}
+img { max-width: 100%; display: block; }
+a { color: inherit; }
+a:focus-visible { outline: 2px dashed var(--inkt); outline-offset: 3px; }
+
+/* ---------- Gedeelde versiering ---------- */
+.tape {
+  position: absolute;
+  width: 40%;
+  height: 26px;
+  left: 30%;
+  top: -14px;
+  z-index: 3;
+  opacity: .92;
+  background:
+    repeating-linear-gradient(90deg, rgba(150,104,64,.35) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(0deg, rgba(150,104,64,.35) 0 6px, transparent 6px 12px),
+    #e8d3bb;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12);
+}
+
+.polaroid {
+  position: relative;
+  margin: 0;
+  background: var(--polaroid);
+  padding: 12px 12px 46px;
+  box-shadow: 0 6px 16px rgba(40,30,20,.22), 0 1px 3px rgba(40,30,20,.2);
+  transform: rotate(var(--draai, 0deg));
+}
+.polaroid img { width: 100%; aspect-ratio: var(--vorm, 4 / 3); object-fit: cover; }
+
+.krantstrook {
+  position: absolute;
+  z-index: 0;
+  background: #efebe3;
+  color: #7a756d;
+  font-family: var(--tekst);
+  font-size: .8rem;
+  line-height: 1.25;
+  padding: 1.1rem .8rem;
+  overflow: hidden;
+  clip-path: polygon(0.0% 7.1%, 3.3% 3.3%, 6.7% 14.3%, 10.0% 1.6%, 13.3% 11.8%, 16.7% 8.0%, 20.0% 1.3%, 23.3% 11.2%, 26.7% 0.8%, 30.0% 9.5%, 33.3% 1.5%, 36.7% 2.0%, 40.0% 9.3%, 43.3% 18.2%, 46.7% 2.7%, 50.0% 4.9%, 53.3% 13.8%, 56.7% 20.8%, 60.0% 12.7%, 63.3% 8.7%, 66.7% 21.5%, 70.0% 1.0%, 73.3% 18.9%, 76.7% 6.4%, 80.0% 3.2%, 83.3% 2.6%, 86.7% 6.8%, 90.0% 18.0%, 93.3% 4.0%, 96.7% 12.8%, 100.0% 14.1%, 100.0% 91.8%, 96.7% 87.9%, 93.3% 98.6%, 90.0% 98.7%, 86.7% 95.5%, 83.3% 85.0%, 80.0% 90.6%, 76.7% 93.1%, 73.3% 87.1%, 70.0% 90.0%, 66.7% 93.4%, 63.3% 82.5%, 60.0% 84.6%, 56.7% 94.6%, 53.3% 87.4%, 50.0% 88.4%, 46.7% 80.7%, 43.3% 84.0%, 40.0% 93.7%, 36.7% 78.4%, 33.3% 97.4%, 30.0% 90.8%, 26.7% 83.3%, 23.3% 96.7%, 20.0% 89.2%, 16.7% 99.1%, 13.3% 85.3%, 10.0% 83.2%, 6.7% 87.4%, 3.3% 80.7%, 0.0% 93.1%);
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.15));
+  word-spacing: .15em;
+  text-align: justify;
+}
+
+.kraft {
+  position: absolute;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,.08), transparent 40%),
+    radial-gradient(circle at 70% 80%, rgba(0,0,0,.08), transparent 45%),
+    var(--kraft);
+  clip-path: polygon(0.0% 4.9%, 6.2% 4.2%, 12.5% 4.1%, 18.8% 3.2%, 25.0% 5.9%, 31.2% 6.6%, 37.5% 3.3%, 43.8% 4.6%, 50.0% 0.4%, 56.2% 4.9%, 62.5% 4.5%, 68.8% 7.0%, 75.0% 5.8%, 81.2% 2.0%, 87.5% 2.7%, 93.8% 4.7%, 100.0% 0.2%, 96.8% 6.2%, 98.8% 12.5%, 99.2% 18.8%, 99.6% 25.0%, 94.6% 31.2%, 99.1% 37.5%, 98.3% 43.8%, 97.3% 50.0%, 93.9% 56.2%, 99.4% 62.5%, 96.9% 68.8%, 96.2% 75.0%, 93.8% 81.2%, 94.3% 87.5%, 94.0% 93.8%, 98.1% 100.0%, 93.8% 97.1%, 87.5% 97.5%, 81.2% 93.8%, 75.0% 93.3%, 68.8% 98.9%, 62.5% 98.8%, 56.2% 98.4%, 50.0% 98.4%, 43.8% 96.6%, 37.5% 95.9%, 31.2% 98.2%, 25.0% 100.0%, 18.8% 97.1%, 12.5% 97.4%, 6.2% 96.0%, 0.0% 93.3%, 4.8% 93.8%, 3.6% 87.5%, 4.3% 81.2%, 4.7% 75.0%, 0.4% 68.8%, 6.3% 62.5%, 5.5% 56.2%, 6.1% 50.0%, 5.6% 43.8%, 2.7% 37.5%, 2.8% 31.2%, 0.7% 25.0%, 4.4% 18.8%, 0.4% 12.5%, 0.5% 6.2%);
+}
+
+.bloem, .varen { position: absolute; z-index: 1; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.18)); }
+
+/* ---------- Voorpagina (plakboek) ---------- */
+.plakboek {
+  position: relative;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-inline: 16px;
+  padding-block: 2rem 1rem;
+  overflow: hidden;
+}
+.collage { position: relative; aspect-ratio: 1100 / 820; }
+.collage > .polaroid { position: absolute; }
+
+.foto-stal     { left: 6%;  top: 5%;  width: 25%; --draai: -4deg; --vorm: 499 / 620; z-index: 3; }
+.foto-emmer    { left: 28%; top: 10%; width: 32%; --draai: 1.5deg; --vorm: 1 / 1; z-index: 2; }
+.foto-hoeven   { left: 70%; top: 17%; width: 26%; --draai: 5deg; --vorm: 516 / 400; z-index: 2; }
+.foto-bekappen { left: 1%;  top: 57%; width: 33%; --draai: 1.5deg; --vorm: 686 / 497; z-index: 2; }
+.foto-hoef     { left: 58%; top: 56%; width: 31%; --draai: -4deg; --vorm: 430 / 285; z-index: 3; }
+
+.titelkaart {
+  position: absolute;
+  left: 31%; top: 49%; width: 30%;
+  z-index: 5;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.5), transparent 60%),
+    #ebe5d8;
+  padding: 3.2rem 1.5rem 2.6rem;
+  transform: rotate(-1.5deg);
+  clip-path: polygon(0.0% 0.0%, 4.5% 0.0%, 9.1% 0.0%, 13.6% 0.0%, 18.2% 0.0%, 22.7% 0.0%, 27.3% 0.0%, 31.8% 0.0%, 36.4% 0.0%, 40.9% 0.0%, 45.5% 0.0%, 50.0% 0.0%, 54.5% 0.0%, 59.1% 0.0%, 63.6% 0.0%, 68.2% 0.0%, 72.7% 0.0%, 77.3% 0.0%, 81.8% 0.0%, 86.4% 0.0%, 90.9% 0.0%, 95.5% 0.0%, 100.0% 0.0%, 100.0% 98.7%, 95.5% 99.0%, 90.9% 98.0%, 86.4% 99.7%, 81.8% 100.0%, 77.3% 99.1%, 72.7% 99.4%, 68.2% 97.8%, 63.6% 99.8%, 59.1% 94.8%, 54.5% 96.3%, 50.0% 99.1%, 45.5% 98.5%, 40.9% 97.9%, 36.4% 97.8%, 31.8% 99.3%, 27.3% 94.9%, 22.7% 94.0%, 18.2% 97.2%, 13.6% 97.1%, 9.1% 99.5%, 4.5% 99.4%, 0.0% 97.9%);
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.2));
+}
+.titelkaart h1 {
+  margin: 0;
+  font-family: var(--hand);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 3.4vw, 2.7rem);
+  line-height: 1.5;
+  text-wrap: balance;
+}
+.paperclip { position: absolute; left: 12%; top: -6px; width: 24px; z-index: 6; }
+
+.kraft-1 { left: 0; top: 0; width: 58%; height: 42%; }
+.kraft-2 { left: 36%; bottom: 0; width: 26%; height: 14%; }
+.strook-1 { right: -2%; top: 0; width: 52%; height: 11%; transform: rotate(3deg); }
+.strook-2 { left: 30%; bottom: 2%; width: 34%; height: 10%; transform: rotate(-2deg); }
+.bloem-1 { left: -5%; top: 38%; width: 17%; }
+.bloem-2 { right: -3%; top: 3%; width: 13%; }
+.varen-1 { right: 1%; top: 42%; width: 9%; transform: rotate(-24deg); }
+
+/* ---------- Inhoud (kaartjes met onderwerpen) ---------- */
+.inhoud {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding-inline: 16px;
+  padding-block: 1.5rem 3rem;
+}
+.inhoud-kop {
+  font-family: var(--hand);
+  font-size: 1.7rem;
+  font-weight: 400;
+  margin: 0 0 1.6rem;
+  text-align: center;
+}
+.intro {
+  max-width: 62ch;
+  margin: 0 auto 2.5rem;
+  text-align: center;
+  color: var(--inkt-zacht);
+}
+.kaartjes {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 2.4rem 1.8rem;
+}
+.kaartje a {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  height: 100%;
+  padding: 1.6rem 1.3rem 1.3rem;
+  text-decoration: none;
+  background:
+    repeating-linear-gradient(transparent 0 27px, rgba(80,110,150,.18) 27px 28px),
+    var(--papier);
+  background-position: 0 3.1rem;
+  box-shadow: 0 4px 10px rgba(40,30,20,.16);
+  transform: rotate(var(--draai, 0deg));
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.kaartje:nth-child(3n+1) a { --draai: -1.2deg; }
+.kaartje:nth-child(3n+2) a { --draai: .9deg; }
+.kaartje:nth-child(3n)   a { --draai: -.4deg; }
+.kaartje a:hover { transform: rotate(0deg) translateY(-3px); box-shadow: 0 10px 18px rgba(40,30,20,.2); }
+.kaartje .tape { width: 34%; left: 33%; height: 22px; top: -11px; }
+.kaartje-titel { font-family: var(--kop); font-size: 1.15rem; line-height: 1.3; }
+.kaartje-tekst { font-size: 1rem; color: var(--inkt-zacht); line-height: 1.55; }
+.kaartje-status {
+  margin-top: auto;
+  padding-top: .6rem;
+  font-family: var(--hand);
+  font-size: .85rem;
+  color: var(--kraft-donker);
+}
+
+/* ---------- Krantenpagina (onderwerpen) ---------- */
+body.krantpagina { background: var(--krant); }
+.krant {
+  max-width: 900px;
+  margin: 0 auto;
+  padding-inline: 16px;
+  padding-block: 1.5rem 3rem;
+}
+.menu {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .3rem 1.2rem;
+  margin: 0 0 1.2rem;
+  padding: 0;
+  list-style: none;
+  font-size: .95rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.menu a { text-decoration: none; color: var(--inkt-zacht); }
+.menu a:hover, .menu a[aria-current="page"] { color: var(--inkt); text-decoration: underline; text-underline-offset: 4px; }
+
+.ornament { width: min(520px, 80%); margin: .6rem auto; }
+.lijn { border: 0; border-top: 2px solid var(--inkt); margin: .8rem 0; }
+.lijn-dubbel { border: 0; border-top: 2px solid var(--inkt); border-bottom: 5px solid var(--inkt); height: 7px; margin: .8rem 0 2rem; }
+
+.krant h1 {
+  font-family: var(--kop);
+  font-weight: 400;
+  font-size: clamp(2rem, 6vw, 3.6rem);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  line-height: 1.15;
+  margin: .4rem 0;
+  text-wrap: balance;
+}
+.krant h2 {
+  font-family: var(--kop);
+  font-weight: 400;
+  font-size: 1.35rem;
+  margin: 0 0 .6rem;
+  text-wrap: balance;
+}
+
+/* Fotolijst met schuine hoeken, zoals in een oude krant */
+.lijst {
+  margin: 0 0 1.8rem;
+  padding: 10px;
+  border: 2px solid var(--inkt);
+  background:
+    linear-gradient(45deg, transparent 49%, var(--inkt) 49% 51%, transparent 51%) left top / 12px 12px no-repeat,
+    linear-gradient(-45deg, transparent 49%, var(--inkt) 49% 51%, transparent 51%) right top / 12px 12px no-repeat,
+    linear-gradient(-45deg, transparent 49%, var(--inkt) 49% 51%, transparent 51%) left bottom / 12px 12px no-repeat,
+    linear-gradient(45deg, transparent 49%, var(--inkt) 49% 51%, transparent 51%) right bottom / 12px 12px no-repeat;
+}
+.lijst img { width: 100%; border: 2px solid var(--inkt); object-fit: cover; }
+.lijst figcaption { font-size: .85rem; font-style: italic; color: var(--inkt-zacht); padding-top: .4rem; text-align: center; }
+.lijst-breed img { aspect-ratio: 1212 / 560; }
+
+.kolommen {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem 2rem;
+  align-items: start;
+}
+.kolommen p, .artikel p { margin: 0 0 1rem; }
+.krant p, .krant li {
+  text-align: justify;
+  hyphens: auto;
+  font-size: 1.2rem;
+  line-height: 1.7;
+}
+.krant ul { padding-left: 1.2rem; margin: 0 0 1rem; }
+.bedrag { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.nog-schrijven {
+  border: 2px dashed var(--inkt-zacht);
+  padding: 1.2rem 1.4rem;
+  color: var(--inkt-zacht);
+}
+.nog-schrijven p { text-align: left; }
+.nog-schrijven { margin-bottom: 1.5rem; }
+
+.bladeren {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+  font-size: 1rem;
+}
+.bladeren a { text-decoration: none; }
+.bladeren a:hover { text-decoration: underline; }
+
+
+/* Genummerde stappen, tussenkop en bronnenlijst */
+.tussenkop { text-align: center; font-size: 1.6rem !important; margin-bottom: 1rem !important; }
+.inleiding { max-width: 65ch; margin: 0 auto 2rem !important; }
+.krant ol.stappen { list-style: none; counter-reset: stap; padding: 0; margin: 0 0 1.5rem; }
+.krant ol.stappen li { counter-increment: stap; position: relative; padding-left: 2.6rem; margin-bottom: .8rem; text-align: left; }
+.krant ol.stappen li::before {
+  content: counter(stap);
+  position: absolute; left: 0; top: .15rem;
+  width: 1.9rem; height: 1.9rem;
+  display: grid; place-items: center;
+  border: 2px solid var(--inkt); border-radius: 50%;
+  font-family: var(--kop); font-size: 1rem; line-height: 1;
+}
+.kolommen + .kolommen { margin-top: 1rem; }
+.bronnen { border-top: 2px solid var(--inkt); border-bottom: 2px solid var(--inkt); padding: 1rem 0 .4rem; margin: 1.5rem 0 2rem; }
+.bronnen h2 { font-size: 1.1rem !important; }
+.krant .bronnen li { font-size: 1rem; text-align: left; }
+
+
+/* Downloadknop voor de pdf */
+.download {
+  display: flex;
+  justify-content: center;
+  margin: -1rem 0 2.5rem;
+}
+.download a {
+  display: inline-block;
+  padding: .55rem 1.3rem;
+  background: var(--kraft);
+  color: #fffaf1;
+  text-decoration: none;
+  font-family: var(--tekst);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-size: .9rem;
+  box-shadow: 0 3px 8px rgba(40,30,20,.2);
+  transform: rotate(-1deg);
+  transition: transform .2s ease;
+}
+.download a:hover { transform: rotate(0deg) translateY(-2px); background: var(--kraft-donker); }
+
+
+/* Gereedschap met tekeningen */
+.gereedschap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1.2rem;
+  margin: 0 0 2.2rem;
+}
+.gereedschap-item {
+  margin: 0;
+  border: 2px solid var(--inkt);
+  padding: .8rem .9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  break-inside: avoid;
+}
+.gereedschap-item img { width: 100%; aspect-ratio: 3 / 2; object-fit: contain; border-bottom: 1px solid var(--inkt); padding-bottom: .4rem; }
+.gereedschap-item figcaption { font-size: 1rem; line-height: 1.5; }
+.gereedschap-item strong { display: block; font-family: var(--kop); font-weight: 400; font-size: 1.05rem; margin-bottom: .2rem; }
+.bron-noot { font-size: .9rem !important; font-style: italic; color: var(--inkt-zacht); }
+
+
+/* Rij met drie staande foto's */
+.fotorij { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2rem; margin-bottom: 1rem; }
+.fotorij .lijst img { aspect-ratio: 3 / 4; }
+@media (max-width: 600px) { .fotorij { grid-template-columns: 1fr; } }
+
+
+/* Staande foto bovenaan een pagina */
+.lijst-staand { max-width: 440px; margin-inline: auto; }
+.lijst-staand img { aspect-ratio: 736 / 840; }
+
+/* Afdrukken en pdf */
+@page { size: A4; margin: 0; }
+@media print {
+  html, body, body.krantpagina { background: var(--krant); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .menu, .bladeren, .download, .nog-niet-klaar { display: none !important; }
+  .kaartje a { box-shadow: none; border: 1px solid #cfc6b8; }
+  .pdf-pagina { break-before: page; }
+  .plakboek { max-width: 165mm !important; margin: 0 auto; padding-block: 6mm 0 !important; }
+  .intro { margin-bottom: 5mm; }
+  .inhoud { padding-block: 0 4mm !important; }
+  .inhoud-kop { margin-bottom: 3mm; }
+  .titelkaart { padding: 9mm 4mm 7mm; }
+  .titelkaart h1 { font-size: 17pt; line-height: 1.6; }
+  .kaartjes { gap: 5mm 4mm; }
+  .kaartje a { padding: 4mm 3mm 3mm; }
+  .plakboek, .inhoud, .krant { padding-inline: 12mm; padding-block: 10mm; max-width: none; }
+  .lijst, .kaartje, .stappen li, .bronnen { break-inside: avoid; }
+  .krant p, .krant li { font-size: 10.5pt; line-height: 1.5; }
+  .krant h1 { font-size: 28pt; }
+  .krant h2 { font-size: 13pt; }
+  .tussenkop { font-size: 15pt !important; }
+  .lijst { margin-bottom: 5mm; }
+  .lijst-breed img { aspect-ratio: 1212 / 470; }
+  .lijst-staand { max-width: 85mm; }
+  .ornament { width: 60%; margin: 2mm auto; }
+  .intro { font-size: 10.5pt; margin-bottom: 8mm; }
+  .kaartjes { grid-template-columns: repeat(3, 1fr); gap: 7mm 5mm; }
+  .kaartje-titel { font-size: 11pt; }
+  .kaartje-tekst { font-size: 9pt; }
+  .gereedschap-item figcaption { font-size: 9.5pt; }
+}
+
+/* ---------- Telefoon en tablet ---------- */
+@media (max-width: 760px) {
+  .collage { aspect-ratio: auto; display: flex; flex-direction: column; align-items: center; gap: 1.8rem; padding-block: 1rem; }
+  .collage > .polaroid, .titelkaart { position: relative; left: auto; top: auto; width: min(88%, 380px); }
+  .titelkaart { order: -1; }
+  .foto-emmer, .foto-hoef { align-self: flex-end; }
+  .foto-stal, .foto-bekappen { align-self: flex-start; }
+  .kraft-1 { width: 100%; height: 22%; }
+  .strook-1 { width: 90%; height: 5%; top: 30%; }
+  .strook-2 { width: 90%; height: 5%; }
+  .bloem-1 { top: 45%; width: 30%; left: -12%; }
+  .bloem-2 { top: 20%; width: 26%; right: -10%; }
+  .varen-1 { top: 70%; width: 18%; right: -4%; }
+  .kolommen { grid-template-columns: 1fr; }
+  .krant p, .krant li { text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Informatie Hoefsmid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alice&family=Homemade+Apple&family=Rye&display=swap">
+<link rel="stylesheet" href="css/stijl.css">
+</head>
+<body>
+
+<!-- ===== Plakboek-voorkant ===== -->
+<header class="plakboek">
+  <div class="collage">
+    <div class="kraft kraft-1" aria-hidden="true"></div>
+    <div class="kraft kraft-2" aria-hidden="true"></div>
+    <div class="krantstrook strook-1" aria-hidden="true">althans de hoefsmid kwam iedere week langs, vroeg in de ochtend, met het ijzer nog warm van het vuur en de paarden stonden al te wachten op de stal van de boerderij aan de rand van het dorp waar iedereen elkaar kende sinds jaar en dag</div>
+    <div class="krantstrook strook-2" aria-hidden="true">zes weken later was het weer zover, de hoeven waren gegroeid en de ijzers versleten door het rijden op de harde weg langs de dijk, dus werd er opnieuw bekapt en beslagen zoals het al generaties ging</div>
+
+    <figure class="polaroid foto-stal"><span class="tape" aria-hidden="true"></span><img src="fotos/stal.jpg" alt="Hoefsmid met schootsvel bekapt de hoef van een bruin paard in de stal"></figure>
+    <figure class="polaroid foto-emmer"><img src="fotos/emmer.jpg" alt="Grijs paard snuffelt aan een emmer met hoefsmidgereedschap"></figure>
+    <figure class="polaroid foto-hoeven"><img src="fotos/hoeven.jpg" alt="Beslagen paardenhoeven in het zand"></figure>
+    <figure class="polaroid foto-bekappen"><img src="fotos/bekappen.jpg" alt="Hoefsmid in spijkerbroek tilt een hoef op van een zwart paard"></figure>
+    <figure class="polaroid foto-hoef"><span class="tape" aria-hidden="true"></span><img src="fotos/hoef.jpg" alt="Handen in handschoenen houden een pas bekapte hoef vast"></figure>
+
+    <div class="titelkaart">
+      <img class="paperclip" src="versiering/paperclip.svg" alt="">
+      <h1>Informatie Hoefsmid</h1>
+    </div>
+
+    <img class="bloem bloem-1" src="versiering/bloem-geel.svg" alt="">
+    <img class="bloem bloem-2" src="versiering/bloem-creme.svg" alt="">
+    <img class="varen varen-1" src="versiering/varen.svg" alt="">
+  </div>
+</header>
+
+<!-- ===== Onderwerpen ===== -->
+<main class="inhoud">
+  <h2 class="inhoud-kop">Mijn droombaan</h2>
+  <p class="intro">Op deze website verzamel ik alles over het vak van hoefsmid: wat je verdient, welke opleiding je nodig hebt, hoe een werkdag eruitziet en waarom ik dit werk zo graag wil doen. Klik op een kaartje voor meer informatie.</p>
+
+  <p class="download"><a href="informatie-hoefsmid.pdf" download>Download als pdf</a></p>
+
+  <!-- De kaartjes worden gemaakt uit de lijst in js/menu.js -->
+  <ul class="kaartjes" id="inhoud"></ul>
+</main>
+
+<script src="js/menu.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+ZO VOEG JE EEN NIEUWE PAGINA TOE
+================================
+
+1. Maak een kopie van "sjabloon.html" en geef hem een nieuwe naam,
+   bijvoorbeeld "stage.html" (kleine letters, geen spaties).
+
+2. Open het nieuwe bestand in een teksteditor (bijvoorbeeld Kladblok
+   of Visual Studio Code) en pas aan:
+   - de titel tussen <title> en </title>
+   - de kop tussen <h1> en </h1>
+   - de foto: zet je foto in de map "fotos" en verander
+     src="fotos/..." in de naam van jouw foto
+   - de tekst: haal het blok "Deze pagina wordt nog geschreven" weg
+     en schrijf je eigen alinea's, elk tussen <p> en </p>.
+     Een tussenkopje zet je tussen <h2> en </h2>.
+
+3. Open "js/menu.js" en zet je pagina in de lijst, bijvoorbeeld:
+
+   { bestand: "stage.html", titel: "Mijn stage", kort: "Wat ik leerde bij de smid.", klaar: true },
+
+   Je pagina verschijnt dan vanzelf als kaartje op de voorpagina
+   en in het menu bovenaan elke pagina.
+
+EEN BESTAANDE PAGINA AFMAKEN
+----------------------------
+Open de pagina (bijvoorbeeld "opleiding.html"), vervang het blok
+"Deze pagina wordt nog geschreven" door je tekst en zet in
+"js/menu.js" bij die pagina  klaar: false  op  klaar: true.
+
+TWEE FOTO'S NAAST DE TEKST (zoals op de salarispagina)
+------------------------------------------------------
+Kijk in "salaris.html": daar staat de tekst in <div class="kolommen">
+met twee blokken naast elkaar. Die kun je kopiëren.
+
+BEKIJKEN
+--------
+Dubbelklik op "index.html", dan opent de website in je browser.
+Houd alle bestanden en mappen bij elkaar in deze map.
+
+DE PDF
+------
+Op de voorpagina staat de knop "Download als pdf". Die opent het bestand
+"informatie-hoefsmid.pdf" in deze map. In de pdf staan de voorpagina en
+alle pagina's die in js/menu.js op  klaar: true  staan.
+Heb je een pagina toegevoegd of afgemaakt? Vraag Claude dan om de pdf
+opnieuw te maken, of maak hem zelf: open de pagina in Chrome,
+kies Afdrukken en dan "Opslaan als PDF".
