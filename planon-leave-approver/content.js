@@ -2,6 +2,8 @@
  * Flow in Planon Self-Service (Wicket, AJAX-navigatie):
  *   lijst "Requests to approve" -> regel klikken -> "Details leave request" -> Approve / Reject / Back
  * Per aanvraag wordt eerst gecontroleerd of "# Hours" klopt met From/Till; alleen bij een match wordt goedgekeurd.
+ * Zodra de lijst opent start de controle + goedkeuring vanzelf (instelbaar). Na elke run gaat een rapport via
+ * background.js en bridge.js naar Cyberdeck: wie, welke periode, hoeveel uur en wat er met de aanvraag gebeurd is.
  */
 (() => {
   if (window.__plvLoaded) return;
@@ -15,7 +17,8 @@
     breakEnd: "13:00",      // gelijk aan breakStart = geen pauze-aftrek
     skipWeekends: true,
     tolerance: 0.01,
-    autoConfirm: false      // eventuele bevestigingsstap na "Approve" automatisch klikken
+    autoRun: true,          // controleren + goedkeuren starten zodra de lijst opent
+    autoConfirm: true       // eventuele bevestigingsstap na "Approve" automatisch klikken
   };
   let cfg = { ...DEFAULTS };
 
@@ -130,7 +133,7 @@
   }
 
   // ---------- state ----------
-  const state = { running: false, stop: false, results: {}, selected: {}, log: [] };
+  const state = { running: false, stop: false, results: {}, selected: {}, handled: new Set(), log: [] };
   function log(msg) {
     const t = new Date().toLocaleTimeString("nl-NL");
     state.log.push(`[${t}] ${msg}`);
@@ -157,12 +160,16 @@
     const d = readDetail();
     const rowFrom = parseDate(row.from), rowTill = parseDate(row.till);
     if (!sameMoment(d.from, rowFrom) || !sameMoment(d.till, rowTill)) {
-      return { ok: false, msg: "Geopende aanvraag hoort niet bij deze regel (From/Till wijkt af)" };
+      return { ok: false, msg: "Geopende aanvraag hoort niet bij deze regel (From/Till wijkt af)",
+        reason: "the opened request didn't match the row in the list (From/Till differ)" };
     }
     const exp = expectedHours(d.from, d.till);
-    if (exp === null || isNaN(d.hours)) return { ok: false, msg: `Kan uren niet bepalen (# Hours: "${d.hoursRaw}")` };
+    if (exp === null || isNaN(d.hours)) return { ok: false, msg: `Kan uren niet bepalen (# Hours: "${d.hoursRaw}")`,
+      reason: `couldn't work out the hours (# Hours: "${d.hoursRaw}")` };
     const ok = Math.abs(exp - d.hours) <= cfg.tolerance;
-    return { ok, hours: d.hours, expected: exp, msg: ok ? `${fmtH(d.hours)} = ${fmtH(exp)}` : `${fmtH(d.hours)} ≠ ${fmtH(exp)} (From/Till)` };
+    const h = (n) => (Math.round(n * 100) / 100) + "h";
+    return { ok, hours: d.hours, expected: exp, msg: ok ? `${fmtH(d.hours)} = ${fmtH(exp)}` : `${fmtH(d.hours)} ≠ ${fmtH(exp)} (From/Till)`,
+      reason: ok ? `${h(d.hours)} = ${h(exp)}` : `# Hours says ${h(d.hours)}, but From/Till gives ${h(exp)}` };
   }
 
   function confirmCandidates() {
@@ -197,34 +204,79 @@
     return !still || still.status !== row.status;
   }
 
-  async function run(doApprove) {
+  // ---------- rapport voor Cyberdeck ----------
+  const iso = (s) => parseDate(s)?.toISOString() || "";
+  function reportEntry(row, chk, outcome) {
+    return {
+      number: row.number, requestor: row.requestor, from: iso(row.from), till: iso(row.till), fromText: row.from, tillText: row.till,
+      hours: chk?.hours ?? null, expected: chk?.expected ?? null, msg: chk?.reason || "", outcome
+    };
+  }
+  async function sendReport(report) {
+    try {
+      await chrome.runtime.sendMessage({ action: "saveReport", report });
+      log("Rapport naar Cyberdeck gestuurd.");
+    } catch (e) {
+      log("Rapport kon niet naar Cyberdeck (extensie herladen? ververs de pagina).");
+    }
+  }
+
+  async function run(doApprove, auto = false) {
     if (state.running) return;
     state.running = true; state.stop = false; render();
-    const numbers = listRows().filter((r) => state.selected[r.number] !== false && /leave/i.test(r.type)).map((r) => r.number);
-    log(`${doApprove ? "Controleren + goedkeuren" : "Alleen controleren"}: ${numbers.length} aanvraag/aanvragen`);
+    const rows = listRows().filter((r) => state.selected[r.number] !== false && /leave/i.test(r.type));
+    rows.forEach((r) => state.handled.add(r.number));
+    const report = { id: `leave-${Date.now()}`, auto, approve: doApprove, page: location.href, fatal: "", stopped: false, requests: [] };
+    const reported = new Set();
+    let current = null; // aanvraag waarop Approve al geklikt is, maar nog niet gerapporteerd
+    log(`${auto ? "Automatisch: " : ""}${doApprove ? "Controleren + goedkeuren" : "Alleen controleren"}: ${rows.length} aanvraag/aanvragen`);
     try {
-      for (const num of numbers) {
+      for (const { number: num } of rows) {
         if (state.stop) break;
         const row = await openRow(num);
         const chk = checkDetail(row);
         state.results[num] = { ...chk, state: chk.ok ? "gecontroleerd" : "afgekeurd door controle" };
         log(`${num} ${row.requestor} ${row.from}–${row.till.split(" ")[1] || row.till}: ${chk.ok ? "✓" : "✗"} ${chk.msg}`);
+        let outcome = chk.ok ? "checked" : "check-failed";
         if (doApprove && chk.ok) {
+          current = { row, chk };
           const done = await approveCurrent(row);
+          outcome = done ? "approved" : "unknown";
           state.results[num].state = done ? "goedgekeurd" : "status onbekend — controleer";
           log(`${num}: ${state.results[num].state}`);
-          if (!isList()) await goBack();
-        } else {
-          await goBack();
         }
+        report.requests.push(reportEntry(row, chk, outcome));
+        reported.add(num); current = null;
+        if (outcome === "checked" || outcome === "check-failed" || !isList()) await goBack();
         render();
       }
       log("Klaar.");
     } catch (e) {
       log("Fout: " + e.message);
+      if (!state.stop) report.fatal = e.message;
     } finally {
+      report.stopped = state.stop;
+      if (current) { report.requests.push(reportEntry(current.row, current.chk, "unknown")); reported.add(current.row.number); }
+      for (const r of rows) if (!reported.has(r.number)) report.requests.push(reportEntry(r, null, "not-done"));
+      report.finishedAt = Date.now();
       state.running = false; state.stop = false; state.waiting = false; render();
+      sendReport(report);
     }
+  }
+
+  // Automatisch starten zodra de lijst aanvragen toont die in deze sessie nog niet behandeld zijn.
+  // Een aanvraag die niet door de controle kwam blijft staan, maar wordt pas na verversen opnieuw bekeken.
+  let autoTimer = null, armedRun = false;
+  function maybeAutoRun() {
+    if (state.running || autoTimer || !(cfg.autoRun || armedRun) || !isList() || isDetail()) return;
+    const fresh = listRows().filter((r) => /leave/i.test(r.type) && state.selected[r.number] !== false && !state.handled.has(r.number));
+    if (!fresh.length) return;
+    autoTimer = setTimeout(() => { // laat Planon eerst uitrenderen
+      autoTimer = null;
+      if (state.running || !isList() || isDetail()) return;
+      armedRun = false;
+      run(true, true);
+    }, 2000);
   }
 
   // ---------- paneel ----------
@@ -266,12 +318,14 @@
         <details><summary>Instellingen urencontrole</summary>
           <label>Werkdag <input type="time" data-cfg="dayStart" value="${cfg.dayStart}"> – <input type="time" data-cfg="dayEnd" value="${cfg.dayEnd}"></label>
           <label>Pauze <input type="time" data-cfg="breakStart" value="${cfg.breakStart}"> – <input type="time" data-cfg="breakEnd" value="${cfg.breakEnd}"> <span class="muted">(gelijk = geen aftrek)</span></label>
+          <label><input type="checkbox" data-cfg="autoRun" ${cfg.autoRun ? "checked" : ""}> Automatisch controleren + goedkeuren zodra de lijst opent</label>
           <label><input type="checkbox" data-cfg="skipWeekends" ${cfg.skipWeekends ? "checked" : ""}> Weekenddagen niet meetellen (meerdaags)</label>
           <label><input type="checkbox" data-cfg="autoConfirm" ${cfg.autoConfirm ? "checked" : ""}> Eventuele bevestigingsstap na Approve automatisch klikken</label>
         </details>
         <details ${state.log.length ? "open" : ""}><summary>Log</summary><div class="plv-log">${esc(state.log.slice(-60).join("\n"))}</div></details>
       </div>`;
     const lg = panel.querySelector(".plv-log"); if (lg) lg.scrollTop = lg.scrollHeight;
+    maybeAutoRun();
   }
 
   function onPanelClick(e) {
@@ -292,7 +346,7 @@
     if (t.dataset.cfg) {
       cfg[t.dataset.cfg] = t.type === "checkbox" ? t.checked : t.value;
       store.set(cfg);
-      state.results = {}; // instellingen gewijzigd -> opnieuw controleren
+      if (t.dataset.cfg !== "autoRun") state.results = {}; // urenregels gewijzigd -> opnieuw controleren
       render();
     }
   }
@@ -304,7 +358,13 @@
     clearTimeout(pending);
     pending = setTimeout(render, 250);
   });
-  store.get().then((saved) => {
+  const takeArmed = async () => { // Cyberdeck vroeg om een run (klik op een Planon-link), geldig 10 minuten
+    try {
+      const { plvArmed = 0 } = await chrome.storage.local.get("plvArmed");
+      if (Date.now() - plvArmed < 10 * 60 * 1000) { armedRun = true; await chrome.storage.local.remove("plvArmed"); }
+    } catch (e) {}
+  };
+  Promise.all([store.get(), takeArmed()]).then(([saved]) => {
     cfg = { ...DEFAULTS, ...saved };
     mo.observe(document.body, { childList: true, subtree: true });
     render();
