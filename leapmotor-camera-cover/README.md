@@ -8,21 +8,22 @@ It prints **as one piece with the hinge already assembled** (print-in-place). It
 
 ## Why a flip lid and not a slider
 
-The camera pod is small: about 45 × 28 mm with a 27–28 × 16–17.5 mm window. There's about 9 mm of face above the window and 6–9 mm to its left and right, but only about 2 mm below it. A sliding shutter would stick far out past the pod. A lid hinged on the top edge fits.
+The camera pod is small. Its window is about 25 × 14.5 mm, with only about 5.5 mm of face above it, 5–6 mm on each side and about 3 mm below. A sliding shutter would stick far out past the pod. A lid hinged on the top edge fits.
 
-## Size (defaults)
+## Size (defaults, measured with a tape measure)
 
 | | |
 |---|---|
-| Frame | 36.9 × 30.6 mm, 5.2 mm thick at the hinge, 2 mm elsewhere |
-| Crossbar | 2 mm bar under the lid joining both legs. It reaches ~4 mm below the window, so it may overhang the pod's bottom edge by ~2 mm. Set `bottom_bar = false` to drop it |
-| Lid | covers 31 × 20 mm (window + 1.5 mm overlap) |
-| Needs | 9 mm of flat face above the window, ~4.5 mm on each side |
+| Frame | 32.9 × 23.7 mm, 5 mm thick at the hinge, 2 mm elsewhere |
+| Lid | covers 27.4 × 16.2 mm (window + 1.2 mm overlap) |
+| Crossbar | 1.5 mm bar under the lid joining both legs, ending ~3.3 mm below the window. Set `bottom_bar = false` to drop it |
+| Needs | 5.9 mm of face above the window, ~4 mm on each side, ~3.3 mm below |
 
-The defaults were estimated from photos with a set square. They're accurate to about ±1.5 mm, so **check with a ruler held flat on the pod** before printing:
+The first test print used sizes estimated from photos and came out about 25% too big. These defaults come from a tape measure held on the pod.
 
-- `win_w` / `win_h`: the dark window **including its black rim**
-- the space above the window (needs ≥ 9 mm; if less, lower `strip_h`)
+## Fit test first
+
+`fit-test.stl` is a 0.6 mm flat outline of the frame with the window cut out. It prints in a few minutes. Hold it on the pod: the window hole should sit just around the dark window, and the outline should stay on the pod face. If it's off, change `win_w` / `win_h` (or `strip_h` for the top) and print the test again.
 
 ## Print (Bambu Lab A1)
 
