@@ -1,8 +1,8 @@
 // Leapmotor B05 driver-camera privacy cover — flip-up lid
 // Print-in-place: frame and lid print together as one piece, no supports.
-// All dimensions in mm. Defaults are measured with a tape measure on the
-// A-pillar camera pod: dark window incl. black rim ≈ 25 × 14.5 mm,
-// ≈ 5.5 mm of face above it, ≈ 5-6 mm left/right, ≈ 3 mm below.
+// All dimensions in mm. Defaults fit the A-pillar camera pod: face ≈ 18 mm
+// tall, dark window incl. black rim ≈ 20 × 11.5 mm, ≈ 4 mm of face above it,
+// ≈ 4.5 mm left/right, ≈ 2.5 mm below.
 //
 // Coordinates: X across the face, Y up the face, Z out of the face.
 // The frame (strip above the window, a leg on each side and an optional
@@ -11,27 +11,27 @@
 
 /* [Camera window — measure these] */
 // Width of the dark window including its black rim
-win_w = 25;
+win_w = 20;
 // Height of the dark window including its black rim
-win_h = 14.5;
+win_h = 11.5;
 
 /* [Fit] */
 // How far the lid reaches past the window on each side
-cover_ov = 1.2;
+cover_ov = 0.8;
 // Hinge axis height above the top of the window
-axis_up = 0.5;
+axis_up = 0.3;
 // Height of the tape strip above the hinge
-strip_h = 2.5;
+strip_h = 1.2;
 // Print-in-place gap between moving parts (raise if it fuses)
-g = 0.35;
+g = 0.3;
 // Pin-in-hole clearance
 pin_clear = 0.3;
 // Click strength: how far the bumps press into the lid (0 = no clicks)
-det = 0.15;
+det = 0.12;
 // Crossbar below the lid joining the two legs (stiffens the frame)
 bottom_bar = true;
 // Crossbar height
-bar_h = 1.5;
+bar_h = 1.2;
 // Recess in the lid's back so it clears the window's raised rim
 rim_pocket = 0.6;
 
@@ -39,11 +39,13 @@ rim_pocket = 0.6;
 // Lid and frame thickness
 t = 2;
 // Hinge barrel radius
-R = 2.5;
+R = 2.2;
 // Hinge pin radius
-pin_r = 1.0;
+pin_r = 0.9;
 // Frame leg width
-et = 2.4;
+et = 2.2;
+// Length of each hinge knuckle on the lid (kept short so they stay clear of the window)
+kl = 2;
 // Preview only: lid angle (0 = closed, 180 = open)
 open_angle = 0;
 // Parts to render
@@ -55,7 +57,7 @@ lw      = win_w + 2 * cover_ov;           // lid width
 lid_len = axis_up + win_h + cover_ov;     // lid length below the axis
 fw      = lw + 2 * (g + et);              // frame width
 ys      = R + 0.4;                        // strip starts here (barrel clearance)
-bar_y   = -lid_len - g - 0.2 - bar_h;      // crossbar bottom edge (extra 0.2 for the lid's swing)
+bar_y   = -lid_len - g - bar_h;            // crossbar bottom edge
 leg_bot = bottom_bar ? bar_y : -(axis_up + win_h);  // legs run down to the bar, else to window bottom
 rho     = (R + pin_r + pin_clear) / 2;    // click bump distance from axis
 rb      = g + det;                        // click bump radius
@@ -76,7 +78,8 @@ module lid() {
         union() {
             translate([-lw / 2, -lid_len, 0])
                 linear_extrude(t) rrect(lw, lid_len + 0.01, 2);
-            translate([-lw / 2, 0, R]) rotate([0, 90, 0]) cylinder(r = R, h = lw);
+            // knuckles only at the ends, so nothing sits in front of the window when open
+            for (x = [-lw / 2, lw / 2 - kl]) translate([x, 0, R]) rotate([0, 90, 0]) cylinder(r = R, h = kl);
             for (s = [-1, 1]) translate([s * lw / 2, 0, R]) rotate([0, s * 90, 0])
                 cylinder(r = pin_r, h = g + et - 0.2);
             // finger grip on the bottom edge
@@ -84,8 +87,8 @@ module lid() {
                 hull() { cube([lw - 8, 1.6, 0.01]); translate([0, 0.4, 0]) cube([lw - 8, 0.8, 1.2]); }
         }
         // clears the window's raised rim
-        translate([-(win_w + 1) / 2, -axis_up - win_h - 0.5, -1])
-            cube([win_w + 1, win_h + 1, 1 + rim_pocket]);
+        translate([-(win_w + 0.6) / 2, -axis_up - win_h - 0.3, -1])
+            cube([win_w + 0.6, win_h + 0.6, 1 + rim_pocket]);
         // click dimples: closed and open (180°) positions
         if (det > 0) for (s = [-1, 1], y = [-rho, rho])
             translate([s * (lw / 2 + g), y, R]) sphere(rb + g);

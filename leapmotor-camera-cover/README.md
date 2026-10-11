@@ -8,18 +8,20 @@ It prints **as one piece with the hinge already assembled** (print-in-place). It
 
 ## Why a flip lid and not a slider
 
-The camera pod is small. Its window is about 25 × 14.5 mm, with only about 5.5 mm of face above it, 5–6 mm on each side and about 3 mm below. A sliding shutter would stick far out past the pod. A lid hinged on the top edge fits.
+The camera pod is small. Its face is only about 18 mm tall, with a window of about 20 × 11.5 mm, about 4 mm of face above it, 4.5 mm on each side and 2.5 mm below. A sliding shutter would stick far out past the pod. A lid hinged on the top edge fits.
 
-## Size (defaults, measured with a tape measure)
+## Size (defaults)
 
 | | |
 |---|---|
-| Frame | 32.9 × 23.7 mm, 5 mm thick at the hinge, 2 mm elsewhere |
-| Lid | covers 27.4 × 16.2 mm (window + 1.2 mm overlap) |
-| Crossbar | 1.5 mm bar under the lid joining both legs, ending ~3.3 mm below the window. Set `bottom_bar = false` to drop it |
-| Needs | 5.9 mm of face above the window, ~4 mm on each side, ~3.3 mm below |
+| Frame | 26.6 × 17.9 mm, 4.4 mm thick at the hinge, 2 mm elsewhere |
+| Lid | covers 21.6 × 12.6 mm (window + 0.8 mm overlap) |
+| Crossbar | 1.2 mm bar under the lid joining both legs, ending ~2.3 mm below the window. Set `bottom_bar = false` to drop it |
+| Needs | 4.1 mm of face above the window, ~3.3 mm on each side, ~2.3 mm below |
 
-The first test print used sizes estimated from photos and came out about 25% too big. These defaults come from a tape measure held on the pod.
+The hinge knuckles sit only at the two ends of the lid, so the open lid leaves the window clear.
+
+**About the measurements:** the pod sticks out 5–6 cm from the pillar. A ruler or tape hooked onto the pillar or the back of the pod therefore reads about 25% too big in photos. That's why the first prints were oversized. Measure with the tape flat against the pod's front face.
 
 ## Fit test first
 
