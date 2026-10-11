@@ -5,9 +5,9 @@
 // ≈ 6-9 mm left/right, only ≈ 2 mm below) — check them with a ruler.
 //
 // Coordinates: X across the face, Y up the face, Z out of the face.
-// The frame (U-shape: strip above the window + a leg on each side) is taped
-// to the pod face. The lid hangs down over the window and flips up 180°
-// to lie on top of the strip; small click bumps hold it closed and open.
+// The frame (strip above the window, a leg on each side and an optional
+// crossbar below the lid) is taped to the pod face. The lid hangs down over
+// the window and flips up 180° to lie on top of the strip; small click bumps hold it closed and open.
 
 /* [Camera window — measure these] */
 // Width of the dark window including its black rim
@@ -28,6 +28,10 @@ g = 0.35;
 pin_clear = 0.3;
 // Click strength: how far the bumps press into the lid (0 = no clicks)
 det = 0.15;
+// Crossbar below the lid joining the two legs (stiffens the frame)
+bottom_bar = true;
+// Crossbar height
+bar_h = 2;
 // Recess in the lid's back so it clears the window's raised rim
 rim_pocket = 0.6;
 
@@ -51,7 +55,8 @@ lw      = win_w + 2 * cover_ov;           // lid width
 lid_len = axis_up + win_h + cover_ov;     // lid length below the axis
 fw      = lw + 2 * (g + et);              // frame width
 ys      = R + 0.4;                        // strip starts here (barrel clearance)
-leg_bot = -(axis_up + win_h);             // legs end level with window bottom
+bar_y   = -lid_len - g - 0.2 - bar_h;      // crossbar bottom edge (extra 0.2 for the lid's swing)
+leg_bot = bottom_bar ? bar_y : -(axis_up + win_h);  // legs run down to the bar, else to window bottom
 rho     = 2.0;                            // click bump distance from axis
 rb      = g + det;                        // click bump radius
 
@@ -91,9 +96,11 @@ module frame() {
     difference() {
         union() {
             translate([-fw / 2, ys, 0]) linear_extrude(t) rrect(fw, strip_h, 1.5);
+            if (bottom_bar)
+                translate([-fw / 2, bar_y, 0]) linear_extrude(t) rrect(fw, bar_h, min(1.5, bar_h / 2 - 0.01));
             for (s = [-1, 1]) {
                 x0 = s > 0 ? lw / 2 + g : -(lw / 2 + g + et);
-                translate([x0, leg_bot, 0]) cube([et, ys + 1.5 - leg_bot, t]);
+                translate([x0, leg_bot + (bottom_bar ? 1 : 0), 0]) cube([et, ys + 1.5 - leg_bot, t]);
                 hull() {                  // ear around the hinge pin
                     translate([x0, 0, R]) rotate([0, 90, 0]) cylinder(r = R, h = et);
                     translate([x0, -R, 0]) cube([et, 2 * R, 0.01]);
@@ -112,5 +119,6 @@ if (part == "preview") color("orange")
     translate([0, 0, R]) rotate([-open_angle, 0, 0]) translate([0, 0, -R]) lid();
 else lid();
 
-echo(str("Frame ", fw, " mm wide; needs ", axis_up + ys + strip_h,
-         " mm of flat face above the window and ", g + et + cover_ov, " mm beside it"));
+echo(str("Frame ", fw, " x ", ys + strip_h - leg_bot, " mm; needs ", axis_up + ys + strip_h,
+         " mm of flat face above the window and ", g + et + cover_ov, " mm beside it",
+         bottom_bar ? str("; crossbar reaches ", -(leg_bot + axis_up + win_h), " mm below the window") : ""));

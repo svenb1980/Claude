@@ -1,6 +1,6 @@
 # Leapmotor B05 driver-camera privacy cover
 
-A flip-up lid for the driver-monitoring camera on the left A-pillar. A U-shaped frame is taped to the camera pod. The lid hangs over the lens when closed and folds up 180° onto the frame when open, and it clicks into place in both positions.
+A flip-up lid for the driver-monitoring camera on the left A-pillar. A rectangular frame is taped to the camera pod. The lid hangs over the lens when closed and folds up 180° onto the frame when open, and it clicks into place in both positions.
 
 ![preview](preview.png)
 
@@ -14,7 +14,8 @@ The camera pod is small: about 45 × 28 mm with a 27–28 × 16–17.5 mm window
 
 | | |
 |---|---|
-| Frame | 36.9 mm wide, 5.2 mm thick at the hinge, 2 mm elsewhere |
+| Frame | 36.9 × 30.6 mm, 5.2 mm thick at the hinge, 2 mm elsewhere |
+| Crossbar | 2 mm bar under the lid joining both legs. It reaches ~4 mm below the window, so it may overhang the pod's bottom edge by ~2 mm. Set `bottom_bar = false` to drop it |
 | Lid | covers 31 × 20 mm (window + 1.5 mm overlap) |
 | Needs | 9 mm of flat face above the window, ~4.5 mm on each side |
 
@@ -34,7 +35,7 @@ The defaults were estimated from photos with a set square. They're accurate to a
 
 1. Peel off the clear protective film tab on the lens if it's still there.
 2. Clean the pod face with isopropyl alcohol.
-3. Stick the frame on with **thin foam VHB tape** (~0.8–1 mm) on the strip and both legs. Put the hinge just above the window's top edge.
+3. Stick the frame on with **thin foam VHB tape** (~0.8–1 mm) on the strip and both legs (the crossbar may not touch the pod, which is fine). Put the hinge just above the window's top edge.
 
 To change sizes, open `camera-cover.scad` in OpenSCAD (Window → Customizer) or in MakerWorld's Parametric Model Maker. Set `part = preview` and `open_angle` to see it move.
 
