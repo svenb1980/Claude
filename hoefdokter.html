@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hoefdokter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alice&family=Homemade+Apple&family=Rye&display=swap">
+<style>
+/* Spreekkamer van de hoefsmid: links de "praktijk" (canvas met loop, hoef en testen),
+   rechts het dossier op papier: patiënt, aantekeningen en jouw oordeel.
+   Kleuren en letters komen uit website-hoefsmid/css/stijl.css. Bewust één (lichte) stijl, net als de website. */
+:root {
+  --grijs: #dddbd7;
+  --papier: #f4f0e7;
+  --kraft: #b48d64;
+  --kraft-donker: #8a6644;
+  --inkt: #2b2926;
+  --inkt-zacht: #5d5750;
+  --accent: #b5532a;     /* stempelrood van het dossier */
+  --goed: #4f7a3f;
+  --fout: #a8432f;
+  --stal: #2e241d;
+
+  --kop: "Rye", "Rockwell", Georgia, serif;
+  --hand: "Homemade Apple", "Segoe Script", cursive;
+  --tekst: "Alice", Georgia, "Times New Roman", serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--grijs); color: var(--inkt); }
+body { margin: 0; font-family: var(--tekst); font-size: 1.05rem; line-height: 1.5; padding-inline: 16px; padding-block: 18px 32px; }
+.pagina { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 18px; }
+h1 { font-family: var(--kop); font-weight: 400; font-size: clamp(1.8rem, 5vw, 2.7rem); margin: 0; letter-spacing: .02em; }
+.ondertitel { font-family: var(--hand); font-size: .95rem; color: var(--inkt-zacht); margin: 0; }
+.stand { font-variant-numeric: tabular-nums; color: var(--inkt-zacht); }
+.stand strong { color: var(--inkt); }
+
+.werk { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+@media (max-width: 880px) { .werk { grid-template-columns: minmax(0, 1fr); } }
+
+.praktijk { background: var(--stal); border-radius: 6px; padding: 10px; box-shadow: 0 8px 22px rgba(40,30,20,.28); display: grid; gap: 10px; min-width: 0; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tab {
+  font: inherit; font-size: .98rem; cursor: pointer; padding: .4em .9em; border-radius: 4px 4px 0 0;
+  border: 0; border-bottom: 3px solid transparent; background: transparent; color: #d9cbb3;
+}
+.tab[aria-selected="true"] { color: var(--papier); border-bottom-color: var(--accent); }
+.tab:focus-visible { outline: 2px dashed var(--papier); outline-offset: 2px; }
+.scherm { position: relative; }
+canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 900 / 520; border-radius: 3px; touch-action: manipulation; background: #3a2d24; }
+canvas.klikbaar { cursor: zoom-in; }
+.balk { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; min-height: 46px; }
+.melding { color: var(--papier); min-width: 0; flex: 1 1 260px; }
+.knoppen { display: flex; gap: 8px; flex-wrap: wrap; }
+
+button.knop {
+  font: inherit; font-family: var(--kop); font-size: .98rem; letter-spacing: .03em; padding: .5em 1em; border-radius: 4px; cursor: pointer;
+  border: 2px solid var(--inkt); background: var(--papier); color: var(--inkt); box-shadow: 0 3px 0 var(--inkt);
+  transition: transform .06s, box-shadow .06s; touch-action: manipulation;
+}
+button.knop:active { transform: translateY(3px); box-shadow: 0 0 0 var(--inkt); }
+button.knop:focus-visible { outline: 2px dashed var(--accent); outline-offset: 3px; }
+button.knop.hoofd { background: var(--accent); color: #fff8ee; }
+button.knop[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* overlay op het canvas voor start- en uitslagkaart */
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 14px; background: rgba(20,14,10,.55); border-radius: 3px; overflow: auto; }
+.overlay[hidden] { display: none; }
+.uitslag { background: var(--papier); max-width: 560px; width: 100%; padding: 20px 22px; box-shadow: 0 10px 30px rgba(0,0,0,.4); transform: rotate(-.5deg); display: grid; gap: 10px; }
+.uitslag h2 { font-family: var(--kop); font-weight: 400; margin: 0; font-size: 1.6rem; line-height: 1.2; text-wrap: balance; }
+.uitslag p { margin: 0; }
+.stempel { justify-self: start; font-family: var(--kop); font-size: .95rem; letter-spacing: .08em; text-transform: uppercase; padding: .15em .6em; border: 2px solid currentColor; transform: rotate(-3deg); }
+.stempel.goed { color: var(--goed); }
+.stempel.half { color: #a07a1c; }
+.stempel.fout { color: var(--fout); }
+.regels { display: grid; gap: 4px; font-size: .97rem; }
+.regels div { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; }
+.regels span:first-child { color: var(--inkt-zacht); }
+.vak { font-size: .97rem; border-left: 3px solid var(--kraft); padding-left: 10px; }
+
+aside { display: grid; gap: 16px; min-width: 0; }
+.kaart { position: relative; background: var(--papier); padding: 18px 18px 16px; box-shadow: 0 6px 16px rgba(40,30,20,.18); transform: rotate(-.6deg); }
+.kaart.kraft { background: var(--kraft); color: #2a1f15; transform: rotate(.5deg); }
+.tape { position: absolute; width: 38%; height: 22px; left: 31%; top: -11px; opacity: .92;
+  background: repeating-linear-gradient(90deg, rgba(150,104,64,.35) 0 6px, transparent 6px 12px), repeating-linear-gradient(0deg, rgba(150,104,64,.35) 0 6px, transparent 6px 12px), #e8d3bb; }
+.label { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--inkt-zacht); margin: 0 0 2px; }
+.kraft .label { color: #4a3523; }
+.naam { font-family: var(--kop); font-size: 1.55rem; margin: 0; line-height: 1.15; }
+.ras { font-family: var(--hand); font-size: .85rem; margin: 4px 0 8px; }
+.klacht { margin: 0; font-size: .97rem; font-style: italic; }
+.eigenaar { margin: 6px 0 0; font-size: .85rem; color: var(--inkt-zacht); }
+
+ul.notities { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; font-size: .95rem; }
+ul.notities li { display: grid; grid-template-columns: 4.6em 1fr; gap: 8px; }
+ul.notities .bron { font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; padding-top: .3em; color: #4a3523; }
+ul.notities .leeg { display: block; font-family: var(--hand); font-size: .85rem; }
+
+.veld { display: grid; gap: 4px; margin-bottom: 10px; }
+.veld label { font-size: .85rem; color: var(--inkt-zacht); }
+select { font: inherit; font-size: .97rem; padding: .4em .5em; border: 2px solid var(--inkt); border-radius: 4px; background: #fffdf8; color: var(--inkt); width: 100%; }
+select:focus-visible { outline: 2px dashed var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) { button.knop { transition: none; } }
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header>
+    <div>
+      <h1>Hoefdokter</h1>
+      <p class="ondertitel">Kijk, voel en onderzoek. Welk ijzer heeft dit paard nodig?</p>
+    </div>
+    <div class="stand">Patiënt <strong id="nummer">0</strong> van <strong id="totaal">6</strong> · Score <strong id="score">0</strong></div>
+  </header>
+
+  <div class="werk">
+    <section class="praktijk" aria-label="Spreekkamer">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-loop" aria-selected="true">Lopen</button>
+        <button class="tab" role="tab" id="tab-hoef" aria-selected="false">Hoef bekijken</button>
+        <button class="tab" role="tab" id="tab-test" aria-selected="false">Voelen en testen</button>
+      </div>
+      <div class="scherm">
+        <canvas id="doek" width="900" height="520" aria-label="Het paard"></canvas>
+        <div class="overlay" id="overlay"></div>
+      </div>
+      <div class="balk">
+        <div class="melding" id="melding" role="status" aria-live="polite"></div>
+        <div class="knoppen" id="knoppen"></div>
+      </div>
+    </section>
+
+    <aside>
+      <div class="kaart">
+        <span class="tape" aria-hidden="true"></span>
+        <p class="label">Patiënt</p>
+        <p class="naam" id="naam">Wachtkamer</p>
+        <p class="ras" id="ras">Nog leeg</p>
+        <p class="klacht" id="klacht">Het eerste paard komt zo binnen.</p>
+        <p class="eigenaar" id="eigenaar"></p>
+      </div>
+
+      <div class="kaart kraft">
+        <span class="tape" aria-hidden="true"></span>
+        <p class="label">Aantekeningen</p>
+        <ul class="notities" id="notities"></ul>
+      </div>
+
+      <div class="kaart">
+        <span class="tape" aria-hidden="true"></span>
+        <p class="label">Jouw oordeel</p>
+        <div class="veld">
+          <label for="kiesDiagnose">Wat heeft het paard?</label>
+          <select id="kiesDiagnose"></select>
+        </div>
+        <div class="veld">
+          <label for="kiesIjzer">Welke behandeling?</label>
+          <select id="kiesIjzer"></select>
+        </div>
+        <button class="knop hoofd" id="voorschrijven" type="button">Voorschrijven</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+// ── Basis ──────────────────────────────────────────────────────────────────────
+const W = 900, H = 520, GROND = 430;
+const doek = document.getElementById('doek');
+const ctx = doek.getContext('2d');
+const $ = id => document.getElementById(id);
+function schaal() { const d = Math.min(window.devicePixelRatio || 1, 2); doek.width = W * d; doek.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0); }
+schaal(); window.addEventListener('resize', schaal);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const schud = arr => arr.map(v => [Math.random(), v]).sort((a, b) => a[0] - b[0]).map(v => v[1]);
+
+// ── Vakkennis: diagnoses, behandelingen en patiënten ──────────────────────────
+const DIAGNOSES = {
+  bevangen:   'Hoefbevangenheid',
+  straalbeen: 'Straalbeenproblemen (podotrochleose)',
+  grip:       'Te weinig grip',
+  scheef:     'Scheve stand',
+  zool:       'Dunne zool door slijtage',
+  zweer:      'Hoefzweer (abces)',
+};
+const BEHANDELINGEN = {
+  normaal:   'Normaal ijzer',
+  ei:        'Eiervormig ijzer',
+  kalkoen:   'Ijzer met kalkoenen',
+  ortho:     'Orthopedisch ijzer',
+  geen:      'Geen ijzer: zweer openmaken en verband',
+};
+
+// gang: stap = paslengte, til = hoe hoog de hoef gaat, snel = passen per seconde,
+// knik = hoofdknik, kreupel = welk been, leun = gewicht naar achteren, teen = landt op de teen,
+// glij = glijdt uit, zwaai = been zwaait naar buiten (van voren te zien)
+const PATIENTEN = [
+  {
+    id: 'bevangen', naam: 'Doerak', ras: 'Shetlander, 14 jaar, aan de dikke kant', eigenaar: 'Familie Jansen',
+    klacht: 'Sinds een paar dagen staat hij zo raar en wil hij niet lopen. Hij staat de hele dag in de wei met het nieuwe voorjaarsgras.',
+    kleur: '#6b4a2f', manen: '#e7dcc4', grond: 'gras', klein: true,
+    gang: { stap: 46, til: 10, snel: .55, leun: 1 },
+    loopZij: 'Staat als een zaagbok: voorbenen ver naar voren, gewicht naar achteren. Stijve, kleine pasjes.',
+    loopVoor: 'Van voren lopen de benen recht, maar hij zet ze heel voorzichtig neer.',
+    hoef: { teen: 'lang', hak: 'normaal', ringen: 'uitlopend', witteLijn: 'breed' },
+    plekken: [
+      { kant: 'zij', x: 250, y: 300, tekst: 'Ringen in de hoefwand lopen naar de hak toe uit elkaar.' },
+      { kant: 'onder', t: 0, s: .88, tekst: 'De witte lijn bij de teen is breed en een beetje rozig.' },
+    ],
+    testen: { warmte: 'Beide voorhoeven voelen warm aan.', pols: 'De polsslag in de kogel bonst hard.', tang: 'Hij trekt weg als je vóór op de zool knijpt, bij de teen.' },
+    juist: { diagnose: 'bevangen', behandeling: 'ortho' },
+    uitleg: 'Bij hoefbevangenheid raakt de verbinding tussen hoefbeen en hoefwand ontstoken, vaak door te veel suikerrijk voorjaarsgras. Het paard zet zijn gewicht op de hakken (zaagbokhouding). De hoefsmid legt samen met de dierenarts een orthopedisch ijzer, zoals een hartijzer, dat de straal ondersteunt en de teen ontlast.',
+  },
+  {
+    id: 'straalbeen', naam: 'Sultan', ras: 'Warmbloed ruin, 12 jaar', eigenaar: 'Mevrouw De Vries',
+    klacht: 'Hij loopt al een tijdje kort voor, vooral in de bocht op de harde bak.',
+    kleur: '#4a3324', manen: '#20160f', grond: 'zand',
+    gang: { stap: 70, til: 18, snel: .95, teen: true, kort: true },
+    loopZij: 'Korte, stijve passen met de voorbenen. Hij zet de teen eerst neer in plaats van de hak.',
+    loopVoor: 'Van voren lopen de benen recht.',
+    hoef: { teen: 'lang', hak: 'laag', ringen: 'geen', witteLijn: 'normaal', straal: 'smal' },
+    plekken: [
+      { kant: 'zij', x: 165, y: 365, tekst: 'Lage, ondergeschoven hakken.' },
+      { kant: 'zij', x: 345, y: 370, tekst: 'De teen is te lang, de hoef staat plat.' },
+      { kant: 'onder', dx: 0, dy: 110, tekst: 'Smalle, ingetrokken straal.' },
+    ],
+    testen: { warmte: 'De hoeven voelen normaal aan, niet warm.', pols: 'Rustige polsslag, niets bijzonders.', tang: 'Pijn als je over het midden van de straal knijpt.' },
+    juist: { diagnose: 'straalbeen', behandeling: 'ei' },
+    uitleg: 'Het straalbeen zit achter in de hoef, boven de straal. Bij problemen daar heeft het paard pijn achter in de hoef en landt het op de teen. Een eiervormig ijzer is achteraan gesloten en geeft de lage hakken extra steun, zodat het straalbeen minder belast wordt.',
+  },
+  {
+    id: 'grip', naam: 'Bram', ras: 'Belgisch trekpaard, 9 jaar', eigenaar: 'Boer Hendriks',
+    klacht: 'Bram trekt de huifkar door het dorp, maar op de klinkers glijdt hij steeds weg. Vooral als het geregend heeft.',
+    kleur: '#8a5a32', manen: '#efe4cf', grond: 'klinkers', groot: true,
+    gang: { stap: 80, til: 20, snel: .8, glij: true },
+    loopZij: 'Loopt recht en is niet kreupel, maar glijdt af en toe weg op de gladde klinkers.',
+    loopVoor: 'Van voren lopen de benen recht.',
+    hoef: { teen: 'normaal', hak: 'normaal', ringen: 'geen', witteLijn: 'normaal', oudIjzer: true },
+    plekken: [
+      { kant: 'onder', t: 1.3, s: .93, tekst: 'Het oude ijzer is helemaal glad gesleten.' },
+      { kant: 'zij', x: 250, y: 280, tekst: 'Gezonde, stevige hoefwand zonder ringen.' },
+    ],
+    testen: { warmte: 'De hoeven voelen normaal aan.', pols: 'Rustige polsslag.', tang: 'Geen pijn, nergens.' },
+    juist: { diagnose: 'grip', behandeling: 'kalkoen' },
+    uitleg: 'Bram is gezond, maar zijn ijzers zijn glad. Kalkoenen zijn verhoogde, omgebogen uiteinden aan de takken van het ijzer. Ze bijten in de grond en geven een trekpaard grip op klinkers, ijs en modder.',
+  },
+  {
+    id: 'scheef', naam: 'Sterre', ras: 'Friese merrie, 2 jaar', eigenaar: 'Lotte van Dijk',
+    klacht: 'Bij het longeren valt me op dat ze raar met haar voorbeen zwaait. Ze heeft verder nergens last van.',
+    kleur: '#1d1916', manen: '#0f0c0a', grond: 'zand',
+    gang: { stap: 80, til: 22, snel: .9, zwaai: 1 },
+    loopZij: 'Van opzij zie je niets bijzonders. Misschien moet je haar eens van voren bekijken?',
+    loopVoor: 'Het rechtervoorbeen zwaait bij elke pas in een boog naar buiten (zeisen). De hoef wijst naar binnen.',
+    hoef: { teen: 'normaal', hak: 'normaal', ringen: 'geen', witteLijn: 'normaal', scheef: true },
+    plekken: [
+      { kant: 'onder', t: 1.4, s: .95, tekst: 'De buitenkant van de hoef is veel meer afgesleten dan de binnenkant.' },
+    ],
+    testen: { warmte: 'De hoeven voelen normaal aan.', pols: 'Rustige polsslag.', tang: 'Geen pijn.' },
+    juist: { diagnose: 'scheef', behandeling: 'ortho' },
+    uitleg: 'Sterre heeft een scheve stand: haar hoef wijst naar binnen, waardoor het been naar buiten zwaait. Bij een jong paard kan de hoefsmid met bekappen en een orthopedisch ijzer met een verbreding aan één kant de stand rustig helpen verbeteren. Bij een volwassen paard ga je daar heel voorzichtig mee om.',
+  },
+  {
+    id: 'zool', naam: 'Oma Truus', ras: 'KWPN-merrie, 23 jaar', eigenaar: 'Manege De Hoefslag',
+    klacht: 'Ze liep altijd op blote voeten, maar sinds we buitenritten over het grindpad maken loopt ze zo voorzichtig.',
+    kleur: '#9a7048', manen: '#5a3e26', grond: 'grind',
+    gang: { stap: 58, til: 14, snel: .7, voorzichtig: true },
+    loopZij: 'Op het grind loopt ze voorzichtig, alsof ze op eieren loopt. Niet echt kreupel.',
+    loopVoor: 'Van voren lopen de benen recht.',
+    hoef: { teen: 'kort', hak: 'normaal', ringen: 'geen', witteLijn: 'normaal', zool: 'dun' },
+    plekken: [
+      { kant: 'onder', dx: -60, dy: -30, tekst: 'De zool is dun en geeft mee onder je duim.' },
+      { kant: 'zij', x: 300, y: 385, tekst: 'De wand is kort afgesleten, bijna tot op de zool.' },
+    ],
+    testen: { warmte: 'De hoeven voelen normaal aan.', pols: 'Rustige polsslag.', tang: 'Overal een beetje gevoelig, de zool geeft mee.' },
+    juist: { diagnose: 'zool', behandeling: 'normaal' },
+    uitleg: 'Op hard grind slijt de hoef sneller dan hij aangroeit. De zool wordt dun en gevoelig. Een gewoon hoefijzer beschermt de hoef, zodat Oma Truus weer fijn buiten kan rijden.',
+  },
+  {
+    id: 'zweer', naam: 'Bliksem', ras: 'Volbloed, 6 jaar', eigenaar: 'Stal Van den Berg',
+    klacht: 'Gisteren liep hij nog prima, en vanochtend staat hij ineens op drie benen!',
+    kleur: '#5e3a22', manen: '#1c120c', grond: 'zand',
+    gang: { stap: 64, til: 22, snel: .75, kreupel: 'RV', knik: 16 },
+    loopZij: 'Heel erg kreupel op één voorbeen. Hij zet die hoef bijna niet neer en knikt flink met zijn hoofd.',
+    loopVoor: 'Van voren zie je dat hij het rechtervoorbeen spaart.',
+    hoef: { teen: 'normaal', hak: 'normaal', ringen: 'geen', witteLijn: 'normaal', puntje: true },
+    plekken: [
+      { kant: 'onder', t: .75, s: .88, tekst: 'Een zwart puntje in de witte lijn.' },
+    ],
+    testen: { warmte: 'Eén voorhoef is warm, de andere hoeven zijn koel.', pols: 'Aan dat ene been bonst de polsslag.', tang: 'Hevige pijn op één plek bij de witte lijn.' },
+    juist: { diagnose: 'zweer', behandeling: 'geen' },
+    uitleg: 'Door een scheurtje of steentje is vuil in de witte lijn gekomen en daar is een ontsteking met pus ontstaan. De druk doet erg veel pijn. Een ijzer helpt dan niet: de hoefsmid zoekt de zweer, maakt hem open zodat de pus eruit kan en legt er een verband om. Daarna is het paard vaak snel weer beter.',
+  },
+];
+
+// ── Spelstatus ─────────────────────────────────────────────────────────────────
+const spel = { lijst: [], nr: -1, p: null, tab: 'loop', vanVoren: false, notities: [], score: 0, keken: 0, klaar: false, tijd: 0 };
+$('totaal').textContent = PATIENTEN.length;
+
+function vulKeuzes() {
+  const vul = (el, obj, tekst) => {
+    el.innerHTML = `<option value="">${tekst}</option>` + Object.entries(obj).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+  };
+  vul($('kiesDiagnose'), DIAGNOSES, 'Kies een diagnose…');
+  vul($('kiesIjzer'), BEHANDELINGEN, 'Kies een behandeling…');
+}
+vulKeuzes();
+
+function meld(t) { $('melding').textContent = t; }
+function noteer(bron, tekst) {
+  if (spel.notities.some(n => n.tekst === tekst)) { meld('Dat had je al genoteerd.'); return; }
+  spel.notities.push({ bron, tekst });
+  toonNotities();
+  meld('Genoteerd: ' + tekst);
+}
+function toonNotities() {
+  const ul = $('notities');
+  if (!spel.notities.length) { ul.innerHTML = '<li><span class="leeg">Nog niets genoteerd. Kijk hoe het paard loopt, bekijk de hoef en doe een paar testen.</span></li>'; return; }
+  ul.innerHTML = spel.notities.map(n => `<li><span class="bron">${n.bron}</span><span>${n.tekst}</span></li>`).join('');
+}
+function knoppen(lijst) {
+  const k = $('knoppen'); k.innerHTML = '';
+  for (const b of lijst) {
+    const el = document.createElement('button');
+    el.type = 'button'; el.className = 'knop' + (b.hoofd ? ' hoofd' : ''); el.id = b.id; el.textContent = b.tekst;
+    if (b.uit) el.disabled = true;
+    el.addEventListener('click', b.klik);
+    k.appendChild(el);
+  }
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────────
+const TABS = ['loop', 'hoef', 'test'];
+function kiesTab(t) {
+  spel.tab = t;
+  TABS.forEach(n => $('tab-' + n).setAttribute('aria-selected', n === t ? 'true' : 'false'));
+  doek.classList.toggle('klikbaar', t === 'hoef');
+  if (!spel.p) return;
+  if (t === 'loop') {
+    knoppen([
+      { id: 'draai', tekst: spel.vanVoren ? 'Van opzij bekijken' : 'Van voren bekijken', klik: () => { spel.vanVoren = !spel.vanVoren; spel.keken = 0; kiesTab('loop'); } },
+      { id: 'noteerLoop', tekst: 'Noteer wat je ziet', hoofd: true, klik: () => noteer(spel.vanVoren ? 'Voren' : 'Lopen', spel.vanVoren ? spel.p.loopVoor : spel.p.loopZij) },
+    ]);
+    meld(spel.vanVoren ? 'Het paard loopt naar je toe. Let op de benen.' : 'Het paard stapt langs. Let op het hoofd, de benen en de houding.');
+  } else if (t === 'hoef') {
+    knoppen([]);
+    meld('Klik op de plekken in de hoef die je opvallen.');
+  } else {
+    knoppen([
+      { id: 'tWarmte', tekst: 'Warmte voelen', klik: () => test('warmte', 'Warmte') },
+      { id: 'tPols', tekst: 'Polsslag voelen', klik: () => test('pols', 'Pols') },
+      { id: 'tTang', tekst: 'Hoeftangtest', klik: () => test('tang', 'Tang') },
+    ]);
+    meld('Voel aan de hoef en het been, of knijp voorzichtig met de hoeftang.');
+  }
+}
+TABS.forEach(t => $('tab-' + t).addEventListener('click', () => kiesTab(t)));
+let testAnimatie = null;
+function test(soort, bron) { testAnimatie = { soort, t: 0 }; noteer(bron, spel.p.testen[soort]); }
+
+// ── Patiënt wisselen ───────────────────────────────────────────────────────────
+function volgende() {
+  spel.nr++;
+  if (spel.nr >= spel.lijst.length) return eindKaart();
+  spel.p = spel.lijst[spel.nr];
+  spel.notities = []; spel.vanVoren = false; spel.klaar = false; spel.keken = 0;
+  $('nummer').textContent = spel.nr + 1;
+  $('naam').textContent = spel.p.naam; $('ras').textContent = spel.p.ras;
+  $('klacht').textContent = '"' + spel.p.klacht + '"'; $('eigenaar').textContent = 'Eigenaar: ' + spel.p.eigenaar;
+  $('kiesDiagnose').value = ''; $('kiesIjzer').value = '';
+  toonNotities();
+  $('overlay').hidden = true;
+  kiesTab('loop');
+}
+function start() {
+  spel.lijst = schud(PATIENTEN); spel.nr = -1; spel.score = 0; $('score').textContent = 0;
+  volgende();
+}
+
+$('voorschrijven').addEventListener('click', () => {
+  if (!spel.p || spel.klaar) return;
+  const d = $('kiesDiagnose').value, b = $('kiesIjzer').value;
+  if (!d || !b) { meld('Kies eerst een diagnose én een behandeling.'); return; }
+  spel.klaar = true;
+  const dGoed = d === spel.p.juist.diagnose, bGoed = b === spel.p.juist.behandeling;
+  const punten = (dGoed ? 50 : 0) + (bGoed ? 50 : 0);
+  spel.score += punten; $('score').textContent = spel.score;
+  const stempel = dGoed && bGoed ? ['goed', 'Goed gezien!'] : dGoed || bGoed ? ['half', 'Half goed'] : ['fout', 'Helaas'];
+  const reactie = dGoed && bGoed ? `${spel.p.eigenaar.split(' ')[0] === 'Familie' ? 'De familie' : spel.p.eigenaar} is blij: ${spel.p.naam} loopt weer lekker.` : bGoed ? 'De behandeling klopt, maar je dacht aan iets anders.' : dGoed ? 'Je zag goed wat er mis was, maar koos niet de beste behandeling.' : `${spel.p.naam} loopt er nog niet beter door.`;
+  toonOverlay(`
+    <div class="uitslag">
+      <span class="stempel ${stempel[0]}">${stempel[1]}</span>
+      <h2>${spel.p.naam}: ${DIAGNOSES[spel.p.juist.diagnose].toLowerCase()}</h2>
+      <p>${reactie}</p>
+      <div class="regels">
+        <div><span>Jouw diagnose</span><span>${dGoed ? '✓' : '✗'} ${DIAGNOSES[d]}</span></div>
+        <div><span>Jouw behandeling</span><span>${bGoed ? '✓' : '✗'} ${BEHANDELINGEN[b]}</span></div>
+        ${bGoed ? '' : `<div><span>Beter was</span><span>${BEHANDELINGEN[spel.p.juist.behandeling]}</span></div>`}
+        <div><span>Punten</span><span>${punten} van 100</span></div>
+      </div>
+      <p class="vak">${spel.p.uitleg}</p>
+      <div><button class="knop hoofd" id="verder" type="button">${spel.nr + 1 < spel.lijst.length ? 'Volgende patiënt' : 'Bekijk je eindscore'}</button></div>
+    </div>`);
+  $('verder').addEventListener('click', volgende);
+  $('verder').focus();
+});
+
+function toonOverlay(html) { const o = $('overlay'); o.innerHTML = html; o.hidden = false; }
+function eindKaart() {
+  spel.p = null; knoppen([]);
+  const max = spel.lijst.length * 100, pct = spel.score / max;
+  const titel = pct >= .9 ? 'Meester-hoefsmid' : pct >= .6 ? 'Gezel-hoefsmid' : 'Leerling-hoefsmid';
+  let beste = 0; try { beste = +localStorage.getItem('hoefdokter-beste') || 0; if (spel.score > beste) localStorage.setItem('hoefdokter-beste', spel.score); } catch (e) {}
+  toonOverlay(`
+    <div class="uitslag">
+      <span class="stempel ${pct >= .6 ? 'goed' : 'half'}">Diploma</span>
+      <h2>${titel}</h2>
+      <p>Je hebt ${spel.lijst.length} paarden onderzocht en ${spel.score} van de ${max} punten gehaald.${beste && beste > spel.score ? ` Je record is ${beste}.` : ''}</p>
+      <p class="vak">Een echte hoefsmid kijkt altijd eerst hoe het paard staat en loopt, en pas daarna naar de hoef. Bij hoefbevangenheid en zweren werkt hij samen met de dierenarts.</p>
+      <div><button class="knop hoofd" id="opnieuw" type="button">Nog een spreekuur</button></div>
+    </div>`);
+  $('opnieuw').addEventListener('click', start);
+  meld('Het spreekuur zit erop.');
+}
+
+// ── Achtergrond en grond ───────────────────────────────────────────────────────
+let grondSchuif = 0;
+function tekenLucht() {
+  const g = ctx.createLinearGradient(0, 0, 0, GROND);
+  g.addColorStop(0, '#5b4636'); g.addColorStop(1, '#8a6a4e');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, GROND);
+  // staldeuren / planken
+  ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2;
+  for (let x = 30; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GROND - 120); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(0, GROND - 120, W, 8);
+}
+function tekenGrond(soort) {
+  const kleuren = { zand: '#c9a978', gras: '#6f8a45', klinkers: '#8b6a5a', grind: '#a49d92' };
+  ctx.fillStyle = kleuren[soort]; ctx.fillRect(0, GROND, W, H - GROND);
+  const s = ((grondSchuif % 1000) + 1000) % 1000;
+  if (soort === 'klinkers') {
+    ctx.strokeStyle = 'rgba(40,25,20,.55)'; ctx.lineWidth = 2;
+    for (let r = 0; r < 5; r++) {
+      const y = GROND + r * 19; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      for (let x = -(s % 44) + (r % 2) * 22; x < W; x += 44) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 19); ctx.stroke(); }
+    }
+    ctx.fillStyle = 'rgba(200,220,240,.12)'; ctx.fillRect(0, GROND, W, 6); // nat en glad
+  } else if (soort === 'grind') {
+    for (let i = 0; i < 260; i++) {
+      const x = ((i * 97.3 - s) % W + W) % W, y = GROND + 4 + (i * 37) % 86;
+      ctx.fillStyle = i % 3 ? '#7f786e' : '#cfc8bc'; ctx.beginPath(); ctx.arc(x, y, 2 + (i % 3), 0, 7); ctx.fill();
+    }
+  } else if (soort === 'gras') {
+    ctx.strokeStyle = '#4f6a30'; ctx.lineWidth = 2;
+    for (let i = 0; i < 140; i++) { const x = ((i * 53.7 - s) % W + W) % W, y = GROND + 6 + (i * 29) % 80; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 3, y - 9); ctx.stroke(); }
+  } else {
+    ctx.fillStyle = 'rgba(120,90,50,.25)';
+    for (let i = 0; i < 90; i++) { const x = ((i * 71.1 - s) % W + W) % W, y = GROND + 6 + (i * 31) % 80; ctx.fillRect(x, y, 14, 2); }
+  }
+}
+
+// ── Het lopende paard (zijaanzicht) ────────────────────────────────────────────
+// Benen: volgorde van een stap is linksachter, linksvoor, rechtsachter, rechtsvoor.
+const BENEN = [
+  { id: 'LA', voor: false, ver: true,  fase: 0 },
+  { id: 'LV', voor: true,  ver: true,  fase: .25 },
+  { id: 'RA', voor: false, ver: false, fase: .5 },
+  { id: 'RV', voor: true,  ver: false, fase: .75 },
+];
+const STEUN = .62;
+function knie(rx, ry, fx, fy, l1, l2, buig) {
+  const dx = fx - rx, dy = fy - ry, d = clamp(Math.hypot(dx, dy), 1, l1 + l2 - .5);
+  const a = Math.atan2(dy, dx), c = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1));
+  const h = a + buig * c;
+  return { x: rx + Math.cos(h) * l1, y: ry + Math.sin(h) * l1 };
+}
+function voetStand(p, been, g) {
+  // geeft x-verschuiving, hoogte en of het been steunt
+  let u, x, y, steunt;
+  const stap = g.stap * ((g.kort && been.voor) ? .75 : 1);
+  if (p < STEUN) { u = p / STEUN; x = stap / 2 - stap * u; y = 0; steunt = Math.sin(Math.PI * u); }
+  else { u = (p - STEUN) / (1 - STEUN); x = -stap / 2 + stap * (1 - Math.cos(Math.PI * u)) / 2; y = -g.til * Math.sin(Math.PI * u); steunt = 0; }
+  if (g.kreupel === been.id && p < STEUN) y = -7 - 4 * Math.sin(Math.PI * p / STEUN); // raakt de grond nauwelijks
+  return { x, y, steunt, u, zwaai: p >= STEUN };
+}
+function tekenZij(tijd) {
+  const p = spel.p, g = p.gang;
+  const s = p.groot ? 1.12 : p.klein ? .72 : 1;
+  const cyc = tijd * g.snel;
+  // glijden: om de paar seconden schiet een achterbeen weg
+  const glijFase = g.glij ? (tijd % 3.2) : 99;
+  const glijdt = glijFase < .45;
+  const leun = g.leun ? 1 : 0;
+  ctx.save();
+  ctx.translate(450, GROND); ctx.scale(s, s); ctx.translate(-450, -GROND);
+  const romp = { x: 450, y: 262 + (glijdt ? Math.sin(glijFase / .45 * Math.PI) * 10 : 0) + Math.sin(cyc * Math.PI * 4) * 1.5 };
+  const voorWortel = { x: romp.x + 95, y: romp.y + 22 }, achterWortel = { x: romp.x - 100, y: romp.y + 16 };
+  const benen = BENEN.map(b => {
+    const st = voetStand((cyc + b.fase) % 1, b, g);
+    let vx = (b.voor ? voorWortel.x : achterWortel.x) + st.x + (b.ver ? 14 : 0);
+    if (leun) vx += b.voor ? 48 : 34;              // zaagbok: voorbenen naar voren, achterbenen onder de buik
+    if (glijdt && b.id === 'RA') vx -= Math.sin(glijFase / .45 * Math.PI) * 60;
+    return { b, st, voet: { x: vx, y: GROND + st.y - 2 } };
+  });
+  const tekenBeen = (bn, donker) => {
+    const w = bn.b.voor ? voorWortel : achterWortel;
+    const rx = w.x + (bn.b.ver ? 14 : 0), ry = w.y - (bn.b.ver ? 4 : 0);
+    const k = knie(rx, ry, bn.voet.x, bn.voet.y - 14, 66, 70, bn.b.voor ? -1 : 1);
+    ctx.strokeStyle = donker ? schaduw(p.kleur) : p.kleur; ctx.lineCap = 'round';
+    ctx.lineWidth = 26; ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(k.x, k.y); ctx.stroke();
+    ctx.lineWidth = 14; ctx.beginPath(); ctx.moveTo(k.x, k.y); ctx.lineTo(bn.voet.x, bn.voet.y - 14); ctx.stroke();
+    // hoef, kantelt bij landen op de teen of bij een kreupel been
+    let kantel = 0;
+    if (p.gang.teen && bn.b.voor && bn.st.zwaai && bn.st.u > .6) kantel = .45;
+    if (p.gang.kreupel === bn.b.id && !bn.st.zwaai) kantel = .55;
+    ctx.save(); ctx.translate(bn.voet.x, bn.voet.y); ctx.rotate(kantel);
+    ctx.fillStyle = '#2b2522'; ctx.beginPath(); ctx.moveTo(-9, -16); ctx.lineTo(9, -16); ctx.lineTo(14, 2); ctx.lineTo(-11, 2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  };
+  // verre benen eerst
+  benen.filter(b => b.b.ver).forEach(b => tekenBeen(b, true));
+  // staart
+  ctx.strokeStyle = p.manen; ctx.lineWidth = 16; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(romp.x - 150, romp.y - 30);
+  ctx.quadraticCurveTo(romp.x - 190, romp.y + 10 + Math.sin(cyc * 6) * 6, romp.x - 182 + Math.sin(cyc * 6) * 8, romp.y + 110); ctx.stroke();
+  // romp
+  ctx.save(); ctx.translate(romp.x, romp.y); ctx.rotate(leun ? -.07 : 0);
+  ctx.fillStyle = p.kleur; ctx.beginPath(); ctx.ellipse(0, 0, 160, 64, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.beginPath(); ctx.ellipse(-10, -22, 120, 26, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  // hoofdknik: hoofd gaat omhoog als het pijnlijke been steunt
+  let knik = 0;
+  if (g.kreupel) {
+    const pijn = benen.find(b => b.b.id === g.kreupel), ander = benen.find(b => b.b.voor && b.b.id !== g.kreupel);
+    knik = -g.knik * pijn.st.steunt + g.knik * .7 * ander.st.steunt;
+  }
+  if (g.kort) knik = Math.sin(cyc * Math.PI * 4) * 3;
+  // hals en hoofd
+  const nek = { x: romp.x + 125, y: romp.y - 25 }, kop = { x: romp.x + 215 - (leun ? 15 : 0), y: romp.y - 100 + knik + (leun ? 14 : 0) };
+  ctx.fillStyle = p.kleur;
+  ctx.beginPath(); ctx.moveTo(nek.x - 55, nek.y + 15); ctx.lineTo(kop.x - 22, kop.y - 18); ctx.lineTo(kop.x + 18, kop.y + 22); ctx.lineTo(nek.x + 40, nek.y + 50); ctx.closePath(); ctx.fill();
+  ctx.save(); ctx.translate(kop.x, kop.y); ctx.rotate(-.75 + (leun ? .15 : 0));
+  ctx.beginPath(); ctx.ellipse(18, 18, 26, 52, -0.1, 0, 7); ctx.fill();
+  ctx.fillStyle = schaduw(p.kleur); ctx.beginPath(); ctx.ellipse(26, 62, 17, 13, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#120d0a'; ctx.beginPath(); ctx.arc(2, 4, 4, 0, 7); ctx.fill();
+  ctx.fillStyle = p.kleur; ctx.beginPath(); ctx.moveTo(-8, -30); ctx.lineTo(0, -58); ctx.lineTo(10, -28); ctx.fill();
+  ctx.restore();
+  // manen
+  ctx.strokeStyle = p.manen; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(nek.x - 50, nek.y + 10); ctx.lineTo(kop.x - 20, kop.y - 22); ctx.stroke();
+  // nabije benen
+  benen.filter(b => !b.b.ver).forEach(b => tekenBeen(b, false));
+  ctx.restore();
+  // grond schuift mee (behalve bij de zaagbok die nauwelijks vooruit komt)
+  if (glijdt) {
+    ctx.font = '22px Rye, Rockwell, Georgia, serif'; ctx.fillStyle = '#fff4e2'; ctx.textAlign = 'center';
+    ctx.fillText('glijdt uit!', 330, 150);
+  }
+  return g.stap * g.snel / STEUN * s;
+}
+function schaduw(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) * .72, g = ((n >> 8) & 255) * .72, b = (n & 255) * .72;
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+
+// ── Het paard van voren (komt naar je toe) ─────────────────────────────────────
+function tekenVoor(tijd) {
+  const p = spel.p, g = p.gang;
+  const s = p.groot ? 1.12 : p.klein ? .75 : 1;
+  const cyc = tijd * g.snel;
+  ctx.save(); ctx.translate(450, GROND); ctx.scale(s, s); ctx.translate(-450, -GROND);
+  // achterbenen, smal en donker achter de borst
+  for (const [x, f] of [[420, 0], [480, .5]]) {
+    const pp = (cyc + f) % 1, op = pp >= STEUN ? Math.sin(Math.PI * (pp - STEUN) / (1 - STEUN)) * 10 : 0;
+    ctx.strokeStyle = schaduw(p.kleur); ctx.lineWidth = 16; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x, 280); ctx.lineTo(x, GROND - 16 - op); ctx.stroke();
+  }
+  // borst en romp
+  ctx.fillStyle = schaduw(p.kleur); ctx.beginPath(); ctx.ellipse(450, 255, 95, 70, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = p.kleur; ctx.beginPath(); ctx.ellipse(450, 268, 72, 66, 0, 0, 7); ctx.fill();
+  // voorbenen
+  const voor = [{ id: 'LV', x: 412, f: .25, kant: -1 }, { id: 'RV', x: 488, f: .75, kant: 1 }];
+  for (const v of voor) {
+    const pp = (cyc + v.f) % 1;
+    let op = 0, uit = 0;
+    if (pp >= STEUN) {
+      const u = (pp - STEUN) / (1 - STEUN);
+      op = Math.sin(Math.PI * u) * g.til * .9;
+      if (g.zwaai && v.id === 'RV') uit = Math.sin(Math.PI * u) * 46 * v.kant; // zeisen
+    }
+    if (g.kreupel === v.id && pp < STEUN) op = 8;
+    const voetX = v.x + uit + (g.zwaai && v.id === 'RV' ? -4 : 0), voetY = GROND - op;
+    const knieX = v.x + uit * .45, knieY = 360 - op * .4;
+    ctx.strokeStyle = p.kleur; ctx.lineCap = 'round';
+    ctx.lineWidth = 24; ctx.beginPath(); ctx.moveTo(v.x, 300); ctx.lineTo(knieX, knieY); ctx.stroke();
+    ctx.lineWidth = 15; ctx.beginPath(); ctx.moveTo(knieX, knieY); ctx.lineTo(voetX, voetY - 16); ctx.stroke();
+    ctx.save(); ctx.translate(voetX, voetY);
+    if (g.zwaai && v.id === 'RV') ctx.rotate(-.25);        // hoef wijst naar binnen
+    ctx.fillStyle = '#2b2522'; ctx.beginPath(); ctx.moveTo(-12, -18); ctx.lineTo(12, -18); ctx.lineTo(15, 0); ctx.lineTo(-15, 0); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    if (uit) { ctx.strokeStyle = 'rgba(255,244,226,.45)'; ctx.setLineDash([4, 5]); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(v.x + 22, GROND - 14, 30, 16, 0, Math.PI, 0); ctx.stroke(); ctx.setLineDash([]); }
+  }
+  // hals en hoofd recht naar je toe
+  let knik = 0;
+  if (g.kreupel) knik = -g.knik * Math.max(0, Math.sin(Math.PI * 2 * (cyc + .75)));
+  ctx.fillStyle = p.kleur; ctx.beginPath(); ctx.ellipse(450, 175, 44, 70, 0, 0, 7); ctx.fill();
+  ctx.save(); ctx.translate(450, 120 + knik);
+  ctx.fillStyle = p.kleur; ctx.beginPath(); ctx.ellipse(0, 0, 34, 80, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = schaduw(p.kleur); ctx.beginPath(); ctx.ellipse(0, 62, 26, 22, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#120d0a'; [-24, 24].forEach(x => { ctx.beginPath(); ctx.arc(x, -24, 5, 0, 7); ctx.fill(); });
+  ctx.fillStyle = p.kleur; [-1, 1].forEach(k => { ctx.beginPath(); ctx.moveTo(k * 14, -70); ctx.lineTo(k * 26, -104); ctx.lineTo(k * 30, -62); ctx.fill(); });
+  ctx.fillStyle = p.manen; ctx.beginPath(); ctx.ellipse(0, -72, 16, 12, 0, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.restore();
+}
+
+// ── De hoef van dichtbij ───────────────────────────────────────────────────────
+const ONDER = { x: 660, y: 260, r: 150 };
+function hoefPunt(t, s) {
+  return { x: ONDER.x + s * ONDER.r * .9 * Math.sin(t), y: ONDER.y - s * ONDER.r * Math.cos(t) + (Math.cos(t) < 0 ? -Math.cos(t) * 10 * s : 0) };
+}
+function hoefPad(s, van = -Math.PI, tot = Math.PI) {
+  ctx.beginPath();
+  for (let i = 0; i <= 80; i++) { const q = hoefPunt(van + (tot - van) * i / 80, s); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }
+}
+function plekXY(pl) {
+  if (pl.kant === 'zij') return { x: pl.x, y: pl.y };
+  if (pl.t !== undefined) return hoefPunt(pl.t, pl.s);
+  return { x: ONDER.x + pl.dx, y: ONDER.y + pl.dy };
+}
+let gevondenPlekken = new Set();
+let missers = [];
+function tekenHoef() {
+  const p = spel.p, h = p.hoef;
+  // schootsvel
+  const g = ctx.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, 560);
+  g.addColorStop(0, '#8a5a35'); g.addColorStop(1, '#4a2e1b');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.font = '16px Alice, Georgia, serif'; ctx.fillStyle = '#f6e7c9'; ctx.textAlign = 'center';
+  ctx.fillText('Van opzij', 250, 40); ctx.fillText('Onderkant', ONDER.x, 40);
+
+  // zijaanzicht: teen rechts
+  const teenX = { lang: 380, normaal: 350, kort: 330 }[h.teen];
+  const hakTop = h.hak === 'laag' ? 260 : 190, grondY = 400;
+  const kort = h.zool === 'dun' ? 12 : 0;
+  ctx.fillStyle = p.kleur; ctx.fillRect(140, 80, 140, 90);                 // kogel en koot
+  ctx.fillStyle = '#3a2a20'; ctx.fillRect(130, 160, 170, 14);              // kroonrand
+  ctx.beginPath(); ctx.moveTo(150, hakTop); ctx.lineTo(140, 172); ctx.lineTo(292, 172); ctx.lineTo(teenX, grondY - kort); ctx.lineTo(165, grondY - kort); ctx.closePath();
+  const hg = ctx.createLinearGradient(140, 0, teenX, 0); hg.addColorStop(0, '#3e322a'); hg.addColorStop(.6, '#6e5a49'); hg.addColorStop(1, '#4a3b30');
+  ctx.fillStyle = hg; ctx.fill();
+  if (h.hak === 'laag') { ctx.fillStyle = '#5a463a'; ctx.beginPath(); ctx.ellipse(158, hakTop + 50, 18, 54, .35, 0, 7); ctx.fill(); }
+  // ringen in de wand
+  ctx.lineWidth = 2;
+  for (let i = 1; i <= 6; i++) {
+    const yv = 172 + i * 30, uit = h.ringen === 'uitlopend' ? i * 9 : 0;
+    const xv = 292 + (teenX - 292) * (yv - 172) / (grondY - 172);
+    ctx.strokeStyle = h.ringen === 'uitlopend' ? 'rgba(20,14,10,.55)' : 'rgba(0,0,0,.12)';
+    ctx.beginPath(); ctx.moveTo(xv - 4, yv); ctx.quadraticCurveTo(220, yv + uit * .6, 152, Math.min(yv + uit, grondY - 10)); ctx.stroke();
+  }
+  if (h.oudIjzer) { ctx.fillStyle = '#9ea3a8'; ctx.fillRect(165, grondY, teenX - 165, 10); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fillRect(170, grondY + 1, teenX - 175, 2); }
+
+  // onderkant
+  hoefPad(1); ctx.closePath(); ctx.fillStyle = '#4a3b30'; ctx.fill();
+  if (h.scheef) { ctx.save(); hoefPad(1, 0, Math.PI); ctx.lineWidth = 10; ctx.strokeStyle = '#2a201a'; ctx.stroke(); ctx.restore(); }
+  hoefPad(.9); ctx.closePath(); ctx.fillStyle = h.witteLijn === 'breed' ? '#e9c2b0' : '#e4d6b4'; ctx.fill();
+  hoefPad(h.witteLijn === 'breed' ? .8 : .86); ctx.closePath();
+  const z = ctx.createRadialGradient(ONDER.x, ONDER.y, 10, ONDER.x, ONDER.y, ONDER.r);
+  z.addColorStop(0, h.zool === 'dun' ? '#d9b9a0' : '#cbb894'); z.addColorStop(1, h.zool === 'dun' ? '#bf9a80' : '#a8916e');
+  ctx.fillStyle = z; ctx.fill();
+  // straal
+  const sb = h.straal === 'smal' ? 30 : 52;
+  ctx.beginPath(); ctx.moveTo(ONDER.x, ONDER.y - 30);
+  ctx.quadraticCurveTo(ONDER.x + sb + 10, ONDER.y + 80, ONDER.x + sb, ONDER.y + ONDER.r * .98);
+  ctx.lineTo(ONDER.x - sb, ONDER.y + ONDER.r * .98);
+  ctx.quadraticCurveTo(ONDER.x - sb - 10, ONDER.y + 80, ONDER.x, ONDER.y - 30);
+  ctx.fillStyle = '#7d6a55'; ctx.fill();
+  ctx.strokeStyle = '#5a4a3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ONDER.x, ONDER.y + 30); ctx.lineTo(ONDER.x, ONDER.y + ONDER.r * .95); ctx.stroke();
+  if (h.oudIjzer) {
+    ctx.lineCap = 'round'; ctx.strokeStyle = '#9ea3a8'; ctx.lineWidth = 24; hoefPad(.93, -2.6, 2.6); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 6; hoefPad(.93, -2.5, 2.5); ctx.stroke();
+  }
+  if (h.puntje) { const q = hoefPunt(.75, .88); ctx.fillStyle = '#0d0a08'; ctx.beginPath(); ctx.arc(q.x, q.y, 5, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#f6e7c9'; ctx.font = '13px Alice, Georgia, serif';
+  ctx.fillText('teen', ONDER.x, ONDER.y - ONDER.r - 10); ctx.fillText('hak', ONDER.x, ONDER.y + ONDER.r + 30);
+  ctx.fillText('hak', 150, grondY + 30); ctx.fillText('teen', teenX, grondY + 30);
+  ctx.fillText('binnen', ONDER.x - ONDER.r - 20, ONDER.y); ctx.fillText('buiten', ONDER.x + ONDER.r + 20, ONDER.y);
+
+  // gevonden plekken
+  p.plekken.forEach((pl, i) => {
+    if (!gevondenPlekken.has(i)) return;
+    const q = plekXY(pl);
+    ctx.strokeStyle = '#a7e08c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(q.x, q.y, 24, 0, 7); ctx.stroke();
+  });
+  missers = missers.filter(m => (m.t -= 16) > 0);
+  for (const m of missers) { ctx.globalAlpha = m.t / 500; ctx.strokeStyle = '#f0e2c8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(m.x, m.y, 14, 0, 7); ctx.stroke(); ctx.globalAlpha = 1; }
+}
+
+// ── Testen ─────────────────────────────────────────────────────────────────────
+function tekenTest(tijd) {
+  const p = spel.p;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#5b4636'); g.addColorStop(1, '#2f241c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // opgetild voorbeen
+  ctx.fillStyle = p.kleur; ctx.fillRect(380, 0, 120, 210);
+  ctx.beginPath(); ctx.ellipse(440, 230, 70, 46, 0, 0, 7); ctx.fill();                    // kogel
+  ctx.fillStyle = '#3a2a20'; ctx.fillRect(375, 268, 150, 14);
+  ctx.fillStyle = '#4a3b30'; ctx.beginPath(); ctx.moveTo(380, 280); ctx.lineTo(520, 280); ctx.lineTo(560, 420); ctx.lineTo(360, 420); ctx.closePath(); ctx.fill();
+  ctx.font = '15px Alice, Georgia, serif'; ctx.fillStyle = '#f6e7c9'; ctx.textAlign = 'center';
+  ctx.fillText('kogel (hier voel je de polsslag)', 440, 175);
+  ctx.fillText('hoefwand', 610, 360);
+  if (!testAnimatie) return;
+  testAnimatie.t += 16;
+  const a = testAnimatie, f = clamp(a.t / 1200, 0, 1);
+  if (a.soort === 'warmte') {
+    ctx.fillStyle = '#e9c7a6'; ctx.beginPath(); ctx.ellipse(470, 350, 60, 32, -.2, 0, 7); ctx.fill();
+    const warm = /warm/.test(p.testen.warmte) && !/niet warm/.test(p.testen.warmte);
+    if (warm) for (let i = 0; i < 3; i++) { ctx.strokeStyle = `rgba(255,140,80,${.7 - i * .2})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(470, 350, 70 + i * 16 + Math.sin(tijd * 4) * 4, -2.6, -.6); ctx.stroke(); }
+  } else if (a.soort === 'pols') {
+    ctx.fillStyle = '#e9c7a6'; ctx.beginPath(); ctx.ellipse(500, 235, 26, 44, .4, 0, 7); ctx.fill();
+    const sterk = /bonst/.test(p.testen.pols);
+    const puls = Math.max(0, Math.sin(tijd * (sterk ? 9 : 5)));
+    ctx.strokeStyle = sterk ? '#ff8f6b' : '#b9dc9f'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(500, 235, 40 + puls * (sterk ? 20 : 6), 0, 7); ctx.stroke();
+  } else {
+    // hoeftang
+    ctx.strokeStyle = '#9aa0a6'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+    const dicht = Math.sin(f * Math.PI) * .25;
+    ctx.beginPath(); ctx.moveTo(300, 470); ctx.lineTo(420, 400 - dicht * 60); ctx.moveTo(320, 500); ctx.lineTo(560, 410 + dicht * 60); ctx.stroke();
+    const pijn = !/Geen pijn/.test(p.testen.tang);
+    if (pijn && f > .4) { ctx.font = '26px Rye, Rockwell, Georgia, serif'; ctx.fillStyle = '#ffb08f'; ctx.fillText('Au!', 640, 300); }
+  }
+  if (a.t > 2400) testAnimatie = null;
+}
+
+// ── Invoer op de hoef ──────────────────────────────────────────────────────────
+doek.addEventListener('click', e => {
+  if (!spel.p || spel.tab !== 'hoef' || spel.klaar) return;
+  const r = doek.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  const i = spel.p.plekken.findIndex(pl => { const q = plekXY(pl); return Math.hypot(q.x - x, q.y - y) < 34; });
+  if (i >= 0) { gevondenPlekken.add(i); noteer('Hoef', spel.p.plekken[i].tekst); }
+  else { missers.push({ x, y, t: 500 }); meld('Hier zie je niets bijzonders.'); }
+});
+
+// ── Lus ────────────────────────────────────────────────────────────────────────
+let vorige = performance.now(), tijd = 0, vorigP = null;
+function lus(nu) {
+  const dt = Math.min(50, nu - vorige) / 1000; vorige = nu; tijd += dt;
+  if (spel.p !== vorigP) { gevondenPlekken = new Set(); missers = []; testAnimatie = null; vorigP = spel.p; }
+  if (!spel.p) {
+    tekenLucht(); tekenGrond('zand');
+    ctx.font = '40px Rye, Rockwell, Georgia, serif'; ctx.fillStyle = '#f6e7c9'; ctx.textAlign = 'center';
+    ctx.fillText('Hoefdokter', W / 2, 200);
+  } else if (spel.tab === 'loop') {
+    tekenLucht(); tekenGrond(spel.p.grond);
+    if (spel.vanVoren) tekenVoor(tijd);
+    else { const v = tekenZij(tijd); grondSchuif += v * dt * (spel.p.gang.leun ? .35 : 1); }
+  } else if (spel.tab === 'hoef') tekenHoef();
+  else tekenTest(tijd);
+  requestAnimationFrame(lus);
+}
+
+toonNotities();
+toonOverlay(`
+  <div class="uitslag">
+    <span class="stempel goed">Spreekuur</span>
+    <h2>Welk ijzer heeft dit paard nodig?</h2>
+    <p>Vandaag komen er zes paarden met een klacht. Jij bent de hoefsmid en speelt detective:</p>
+    <div class="regels">
+      <div><span>1. Lopen</span><span>Kijk hoe het paard stapt, van opzij en van voren.</span></div>
+      <div><span>2. Hoef bekijken</span><span>Klik op wat je opvalt aan de hoef.</span></div>
+      <div><span>3. Voelen en testen</span><span>Voel warmte en polsslag en doe de hoeftangtest.</span></div>
+      <div><span>4. Oordeel</span><span>Kies wat het paard heeft en welke behandeling past.</span></div>
+    </div>
+    <p class="vak">Een goede diagnose en een goede behandeling leveren elk 50 punten op.</p>
+    <div><button class="knop hoofd" id="begin" type="button">Open het spreekuur</button></div>
+  </div>`);
+$('begin').addEventListener('click', start);
+meld('');
+requestAnimationFrame(lus);
+</script>
+</body>
+</html>
