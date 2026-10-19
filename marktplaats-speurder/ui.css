@@ -1,0 +1,77 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #1c2430;
+  --muted: #5d6877;
+  --line: #e2e6eb;
+  --accent: #0e7490;
+  --accent-hover: #0b5f76;
+  --accent-soft: #e3f4f8;
+  --warn: #c2410c;
+  --warn-soft: #fff1e8;
+  --ok: #15803d;
+  --radius: 10px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181e;
+    --card: #1d232b;
+    --text: #e6eaef;
+    --muted: #9aa5b3;
+    --line: #2d3540;
+    --accent: #38bdd8;
+    --accent-hover: #67cfe4;
+    --accent-soft: #15333d;
+    --warn: #fb923c;
+    --warn-soft: #3a2417;
+    --ok: #4ade80;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+a { color: var(--accent); }
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  padding: 7px 14px;
+}
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary:hover { background: var(--accent-hover); }
+@media (prefers-color-scheme: dark) { button.primary { color: #0b1a20; } }
+button.danger { color: var(--warn); }
+button.link { border: none; background: none; padding: 0; color: var(--accent); }
+button.icon { padding: 5px 9px; font-size: 16px; line-height: 1; }
+
+input, select {
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  width: 100%;
+}
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+input[type=checkbox] { width: auto; accent-color: var(--accent); }
+
+.muted { color: var(--muted); }
+.warn { color: var(--warn); }
+.small { font-size: 12px; }
