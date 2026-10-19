@@ -142,6 +142,32 @@ export function parseListing(raw) {
   };
 }
 
+const MONTHS = { jan: 0, feb: 1, mrt: 2, apr: 3, mei: 4, jun: 5, jul: 6, aug: 7, sep: 8, okt: 9, nov: 10, dec: 11 };
+
+export function startOfDay(ms) {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+// Placement day of a listing (local midnight, ms) from the "date" field, which is
+// "Vandaag", "Gisteren", "Eergisteren" or a date like "10 mrt 24". Null if unknown.
+export function listingDay(dateStr, now = Date.now()) {
+  const raw = String(dateStr || '').trim();
+  const s = raw.toLowerCase();
+  const today = new Date(startOfDay(now));
+  const daysAgo = n => new Date(today.getFullYear(), today.getMonth(), today.getDate() - n).getTime();
+  if (s === 'vandaag') return daysAgo(0);
+  if (s === 'gisteren') return daysAgo(1);
+  if (s === 'eergisteren') return daysAgo(2);
+  const m = s.match(/^(\d{1,2})\s+([a-z]{3})[a-z.]*\s+'?(\d{2}|\d{4})$/);
+  if (m && m[2] in MONTHS) {
+    const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    return new Date(year, MONTHS[m[2]], Number(m[1])).getTime();
+  }
+  const iso = /^\d{4}-\d{2}-\d{2}/.test(raw) ? Date.parse(raw) : NaN;
+  return Number.isFinite(iso) ? startOfDay(iso) : null;
+}
+
 export function excludeWords(w) {
   return String(w.exclude || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
