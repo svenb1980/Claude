@@ -39,6 +39,7 @@
     .buttons .left { margin-right: auto; }
 
     #preview { margin-top: 12px; font-size: 13px; }
+    #preview > div { margin-bottom: 4px; }
     #preview ol { margin: 6px 0 0; padding-left: 20px; }
     #preview li { margin-bottom: 3px; }
 
@@ -129,14 +130,14 @@
           <select id="distanceKm"><option value="">Alle afstanden</option></select>
         </span>
       </label>
-      <div class="f full">Conditie <span class="hint">Niets aangevinkt = alles.</span>
+      <div class="f full">Conditie <span class="hint" id="conditionsHint">Niets aangevinkt = alles.</span>
         <div class="checks" id="conditions"></div>
       </div>
       <label class="f full">Uitsluiten <span class="hint">Woorden in de titel, gescheiden door komma's. Bijv.: gezocht, defect, onderdelen</span>
         <input id="exclude">
       </label>
       <label class="c full"><input type="checkbox" id="inDescription"> Ook zoeken in de beschrijving</label>
-      <label class="c full"><input type="checkbox" id="skipAds"> Topadvertenties en dagtoppers overslaan</label>
+      <label class="c full"><input type="checkbox" id="skipAds"> Betaalde promoties (dagtoppers) altijd overslaan, ook als ze nieuw geplaatst zijn</label>
       <label class="c full"><input type="checkbox" id="active"> Actief</label>
     </div>
     <div id="errors" class="errors" hidden></div>

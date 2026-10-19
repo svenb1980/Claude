@@ -1,13 +1,16 @@
 import { CATEGORIES } from './categories.js';
 import {
-  DEFAULT_SETTINGS, CONDITIONS, DISTANCES_KM, newWatch, validateWatch, fetchListings, passesFilters,
-  formatPrice, formatDistance, normalizePostcode, websiteUrl, timeAgo, watchLabel, el,
+  DEFAULT_SETTINGS, CONDITIONS, DISTANCES_KM, MAX_PAGES, PAGE_SIZE, newWatch, validateWatch, fetchListings,
+  fetchConditions, passesFilters, formatPrice, formatDistance, normalizePostcode, websiteUrl, timeAgo, watchLabel, el,
+  startOfDay,
 } from './lib.js';
 
 const $ = id => document.getElementById(id);
 let editingId = null; // id of the search open in the editor, null for a new one
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 function categoryName(l1, l2) {
   const cat = CATEGORIES.find(c => String(c[0]) === String(l1));
@@ -24,19 +27,31 @@ function summary(w) {
   else if (w.priceMin !== '') parts.push(`vanaf € ${w.priceMin}`);
   else if (w.priceMax !== '') parts.push(`tot € ${w.priceMax}`);
   if (w.postcode) parts.push(normalizePostcode(w.postcode) + (w.distanceKm ? ` + ${w.distanceKm} km` : ''));
-  if (w.conditions.length) parts.push(CONDITIONS.filter(c => w.conditions.includes(c.id)).map(c => c.label).join('/'));
+  if (w.conditions.length) parts.push(conditionOptions(w).filter(c => w.conditions.includes(c.id)).map(c => c.label).join('/'));
   if (w.exclude.trim()) parts.push(`zonder: ${w.exclude.trim()}`);
   if (!w.inDescription) parts.push('alleen titel');
   return parts.join(' · ');
 }
 
-function statusText(w, st) {
+function statusText(w, st, newToday) {
   if (!w.active) return { text: 'Gepauzeerd' };
   if (!st) return { text: 'Wacht op eerste controle…' };
   if (st.lastError) return { text: `⚠ ${st.lastError} (${timeAgo(st.lastCheck)})`, warn: true };
   if (!st.baselineAt) return { text: 'Wacht op eerste controle…' };
-  const total = st.total != null ? `${st.total} advertenties online · ` : '';
-  return { text: `${total}gecontroleerd ${timeAgo(st.lastCheck)}` };
+  return { text: `Gecontroleerd ${timeAgo(st.lastCheck)} · ${newToday} nieuw vandaag` };
+}
+
+// What the last check skipped, so a quiet search can be explained.
+function statsText(st) {
+  const s = st?.stats;
+  if (!s || st.lastError || !st.baselineAt) return '';
+  const parts = [];
+  if (s.promoted) parts.push(count(s.promoted, 'betaalde promotie', 'betaalde promoties'));
+  if (s.shop) parts.push(count(s.shop, 'winkeladvertentie', 'winkeladvertenties'));
+  if (s.old) parts.push(count(s.old, 'oudere advertentie', 'oudere advertenties'));
+  let text = parts.length ? `Laatste controle: ${s.rows} bekeken, waarvan ${parts.join(', ')} niet als nieuw geteld.` : '';
+  if (st.truncated) text += ' Zeer brede zoekopdracht: niet alles kon worden nagelopen; maak hem specifieker.';
+  return text.trim();
 }
 
 function toast(msg) {
@@ -64,7 +79,8 @@ function checkNow() {
 // ── Search list ──────────────────────────────────────────────────────────────
 
 async function renderWatches() {
-  const { watches = [], state = {} } = await chrome.storage.local.get(['watches', 'state']);
+  const { watches = [], state = {}, finds = [] } = await chrome.storage.local.get(['watches', 'state', 'finds']);
+  const today = startOfDay(Date.now());
   const box = $('watches');
   box.replaceChildren();
 
@@ -74,7 +90,8 @@ async function renderWatches() {
   }
 
   for (const w of watches) {
-    const st = statusText(w, state[w.id]);
+    const newToday = finds.filter(f => f.foundAt >= today && (f.watchIds || [f.watchId]).includes(w.id)).length;
+    const st = statusText(w, state[w.id], newToday);
 
     const toggle = el('input', { type: 'checkbox', checked: w.active, title: 'Actief' });
     toggle.onchange = async () => {
@@ -96,13 +113,15 @@ async function renderWatches() {
       toast('Zoekopdracht verwijderd.');
     };
 
-    const site = websiteUrl(w);
+    const site = websiteUrl(w, state[w.id]?.catKeys);
+    const stats = statsText(state[w.id]);
     box.append(el('div', { className: 'watch' + (w.active ? '' : ' off') },
       el('label', { className: 'switch' }, toggle),
       el('div', { className: 'info' },
         el('div', { className: 'name', textContent: watchLabel(w) }),
         el('div', { className: 'small muted', textContent: summary(w) }),
         el('div', { className: 'small ' + (st.warn ? 'warn' : 'muted'), textContent: st.text }),
+        stats ? el('div', { className: 'small ' + (state[w.id].truncated ? 'warn' : 'muted'), textContent: stats }) : null,
         site ? el('a', { className: 'small', href: site, target: '_blank', rel: 'noopener', textContent: 'Open op Marktplaats ↗' }) : null),
       el('div', { className: 'actions' }, edit, del)));
   }
@@ -121,20 +140,56 @@ function fillSubcategories(l1, selected = '') {
   l2.value = selected;
 }
 
+// Condition ids differ per category (a used car is not a used bike), so the options
+// come from the category itself; without a category the common ids are used.
+let conditionsRequest = 0;
+
+function renderConditions(options, checked) {
+  $('conditions').replaceChildren(...options.map(c => el('label', {},
+    el('input', { type: 'checkbox', value: String(c.id), name: 'condition', checked: checked.includes(c.id) }),
+    el('span', { textContent: c.label }))));
+}
+
+// The saved conditions with their labels, followed by the common ones.
+function conditionOptions(w) {
+  const saved = w.conditions.map((id, i) => ({
+    id, label: w.conditionLabels?.[i] || CONDITIONS.find(c => c.id === id)?.label || String(id),
+  }));
+  return [...saved, ...CONDITIONS.filter(c => !w.conditions.includes(c.id))];
+}
+
+function checkedConditions() {
+  return [...document.querySelectorAll('input[name=condition]:checked')].map(cb => Number(cb.value));
+}
+
+async function loadConditions(l1, l2, checked = checkedConditions()) {
+  const request = ++conditionsRequest;
+  if (!l1) {
+    renderConditions(CONDITIONS, checked);
+    $('conditionsHint').textContent = 'Niets aangevinkt = alles.';
+    return;
+  }
+  $('conditionsHint').textContent = 'Opties van deze categorie ophalen…';
+  let options = CONDITIONS;
+  try { options = await fetchConditions(l1, l2); } catch { /* offline: keep the common ids */ }
+  if (request !== conditionsRequest) return; // the category changed meanwhile
+  renderConditions(options, checked);
+  $('conditionsHint').textContent = options.length ? 'Niets aangevinkt = alles.' : 'Deze categorie heeft geen conditiefilter.';
+}
+
 function setupEditorFields() {
   for (const [id, name] of CATEGORIES) $('l1').append(el('option', { value: String(id), textContent: name }));
-  $('l1').onchange = () => fillSubcategories($('l1').value);
+  $('l1').onchange = () => {
+    fillSubcategories($('l1').value);
+    loadConditions($('l1').value, '');
+  };
+  $('l2').onchange = () => loadConditions($('l1').value, $('l2').value);
 
   for (const km of DISTANCES_KM) $('distanceKm').append(el('option', { value: String(km), textContent: `< ${km} km` }));
   $('postcode').oninput = () => {
     $('distanceKm').disabled = !$('postcode').value.trim();
     if ($('distanceKm').disabled) $('distanceKm').value = '';
   };
-
-  for (const c of CONDITIONS) {
-    $('conditions').append(el('label', {},
-      el('input', { type: 'checkbox', value: String(c.id), name: 'condition' }), c.label));
-  }
 }
 
 function openEditor(w) {
@@ -146,7 +201,8 @@ function openEditor(w) {
   fillSubcategories(w.l1, w.l2);
   $('distanceKm').value = w.distanceKm;
   $('distanceKm').disabled = !w.postcode;
-  for (const cb of document.querySelectorAll('input[name=condition]')) cb.checked = w.conditions.includes(Number(cb.value));
+  renderConditions(conditionOptions(w), w.conditions); // right away, so a quick save keeps them
+  loadConditions(w.l1, w.l2, w.conditions);
   for (const f of ['inDescription', 'skipAds', 'active']) $(f).checked = w[f];
   $('errors').hidden = true;
   $('preview').hidden = true;
@@ -166,7 +222,8 @@ function readEditor() {
     priceMax: $('priceMax').value.trim(),
     postcode: normalizePostcode($('postcode').value),
     distanceKm: $('postcode').value.trim() ? $('distanceKm').value : '',
-    conditions: [...document.querySelectorAll('input[name=condition]:checked')].map(cb => Number(cb.value)),
+    conditions: checkedConditions(),
+    conditionLabels: [...document.querySelectorAll('input[name=condition]:checked')].map(cb => cb.nextElementSibling.textContent),
     inDescription: $('inDescription').checked,
     exclude: $('exclude').value.trim(),
     skipAds: $('skipAds').checked,
@@ -187,17 +244,36 @@ $('test').onclick = async () => {
   box.hidden = false;
   box.replaceChildren(el('span', { className: 'muted', textContent: 'Bezig met zoeken op Marktplaats…' }));
   try {
-    const { listings, total } = await fetchListings(w);
-    const hits = listings.filter(l => passesFilters(l, w));
-    const head = `${total ?? listings.length} advertenties gevonden. Van de ${listings.length} nieuwste blijven er ${hits.length} over na jouw filters.`;
-    const list = el('ol');
-    for (const l of hits.slice(0, 5)) {
-      const where = [l.city, formatDistance(l.distanceM)].filter(Boolean).join(', ');
-      list.append(el('li', {},
-        el('a', { href: l.url, target: '_blank', rel: 'noopener', textContent: l.title }),
-        ` – ${formatPrice(l)}${where ? ` (${where})` : ''}`));
+    const { listings, total, truncated } = await fetchListings(w, { minOrganic: 5 });
+    const promoted = listings.filter(l => l.promoted).length;
+    const shop = listings.filter(l => l.shop).length;
+    const hits = listings.filter(l => !l.promoted && !l.shop && passesFilters(l, w));
+    const lines = [el('div', { textContent: `${total ?? listings.length} advertenties gevonden.` })];
+    const skipped = [
+      promoted ? count(promoted, 'betaalde promotie', 'betaalde promoties') : '',
+      shop ? count(shop, 'winkeladvertentie', 'winkeladvertenties') : '',
+    ].filter(Boolean);
+    if (skipped.length) {
+      lines.push(el('div', { className: 'muted', textContent:
+        `Bovenaan de eerste ${listings.length} staan ${skipped.join(' en ')}. ` +
+        'Promoties tellen alleen als ze echt nieuw geplaatst zijn, winkeladvertenties nooit.' }));
     }
-    box.replaceChildren(el('div', { textContent: head }), hits.length ? list : null);
+    if (hits.length) {
+      lines.push(el('div', { textContent: 'Nieuwste gewone advertenties (na jouw filters):' }));
+      const list = el('ol');
+      for (const l of hits.slice(0, 5)) {
+        const where = [l.city, formatDistance(l.distanceM)].filter(Boolean).join(', ');
+        list.append(el('li', {},
+          el('a', { href: l.url, target: '_blank', rel: 'noopener', textContent: l.title }),
+          ` – ${formatPrice(l)}${where ? ` (${where})` : ''}${l.date ? ` · ${l.date.toLowerCase()}` : ''}`));
+      }
+      lines.push(list);
+    } else if (truncated) {
+      lines.push(el('div', { textContent: `In de eerste ${MAX_PAGES * PAGE_SIZE} resultaten staan alleen promoties of advertenties die niet door jouw filters komen.` }));
+    } else {
+      lines.push(el('div', { textContent: 'Er zijn nu geen gewone advertenties die door jouw filters komen.' }));
+    }
+    box.replaceChildren(...lines);
   } catch (e) {
     box.replaceChildren(el('span', { className: 'warn', textContent: `Zoeken mislukt: ${e.message}` }));
   }
@@ -216,7 +292,7 @@ $('form').onsubmit = async e => {
   if (i >= 0) watches[i] = w; else watches.push(w);
   await saveWatches(watches);
   editor.close();
-  toast(i >= 0 ? 'Opgeslagen.' : 'Opgeslagen. Wat nu al online staat telt als bekend; je krijgt alleen nieuwe advertenties.');
+  toast(i >= 0 ? 'Opgeslagen.' : 'Opgeslagen. Wat nu al online staat telt als bekend; je krijgt alleen nieuw geplaatste advertenties.');
   checkNow();
 };
 
@@ -282,7 +358,7 @@ $('importFile').onchange = async () => {
 // ── Start ────────────────────────────────────────────────────────────────────
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.watches || changes.state)) renderWatches();
+  if (area === 'local' && (changes.watches || changes.state || changes.finds)) renderWatches();
 });
 
 setupEditorFields();
