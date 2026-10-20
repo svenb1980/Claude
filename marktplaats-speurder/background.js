@@ -5,18 +5,20 @@
 //   watches   – the searches, edited on the options page
 //   settings  – interval and notification settings (see DEFAULT_SETTINGS)
 //   state     – per search: key (search fingerprint), seen ids, highest listing number
-//               (maxId), last (successful) check, last error, counts for the status line
+//               known at the last check (maxId) and when the search was saved (baseMaxId),
+//               last (successful) check, last error, counts for the status line
 //   finds     – new listings, newest first, each with the searches that found it;
 //               only written here
 //   readUntil – listings found after this time count as unread; only written by the popup
 
 import {
-  DEFAULT_SETTINGS, ID_MARGIN, fetchListings, rejectReason, gateDay, startOfDay, searchKey, formatPrice, formatDistance,
-  watchLabel,
+  DEFAULT_SETTINGS, ID_MARGIN, fetchListings, fetchSiteMaxId, fetchConditions, matchConditions, savedConditions,
+  rejectReason, gateDay, startOfDay, idNumber, searchKey, formatPrice, formatDistance, watchLabel,
 } from './lib.js';
 
 const ALARM = 'check';
-const SEEN_MAX = 2000;   // ids remembered per search
+const SEEN_MAX = 20000;  // safety cap; numbered ids are trimmed by number (see below)
+const OTHER_IDS_MAX = 500; // ids without a number (shop ads), most recent first
 const FINDS_MAX = 300;   // listings kept in the popup
 const ICON = 'icons/icon128.png';
 
@@ -66,44 +68,69 @@ async function doCheckAll() {
   }
 
   const active = watches.filter(w => w.active);
+
+  // Highest listing number seen anywhere in this round so far. Everything numbered at or
+  // below it was placed before the searches checked after it, so it is a safe reference
+  // for every search, also a narrow one whose own newest listing is days old.
+  let siteMax = null;
+  if (active.length) siteMax = await fetchSiteMaxId().catch(() => null);
+
   for (const [i, w] of active.entries()) {
     if (i > 0) await sleep(1500); // be gentle on Marktplaats
 
     const key = searchKey(w);
     const st = state[w.id]?.key === key ? state[w.id] : { key, seen: [], maxId: null, baselineAt: null, lastOkAt: null };
     st.lastCheck = Date.now();
+    if (st.baselineAt && st.baseMaxId === undefined) st.baseMaxId = st.maxId; // saved by 1.1.0
 
     try {
       const now = Date.now();
       const baseline = !st.baselineAt;
       const gate = baseline ? null : gateDay(st.lastOkAt, now);
-      // The baseline records the highest listing number, paging past the dagtoppers on
-      // top until it has seen ordinary listings. Later checks ask Marktplaats for listings
-      // offered since the gate day and page on until they reach an already known one.
-      const res = await fetchListings(w, baseline ? { minOrganic: 1 } : { since: gate, stopAt: st.maxId });
+      const prevMaxId = st.maxId;
+      // The baseline pages past the dagtoppers on top until it has seen ordinary listings.
+      // Later checks ask Marktplaats for listings offered since the gate day and page on
+      // until a page holds nothing numbered above the previous check.
+      const res = await fetchListings(w, baseline ? { minOrganic: 1 } : { since: gate, stopAt: prevMaxId });
+      const respondedAt = Date.now();
       const { listings } = res;
 
+      // Nothing that was online when the search was saved is ever new. Below the previous
+      // check's number only a margin is allowed, for listings that go online a bit late.
+      const minId = prevMaxId !== null ? Math.max(prevMaxId - ID_MARGIN, st.baseMaxId ?? -Infinity) : null;
       const seen = new Set(st.seen);
-      const minId = st.maxId !== null ? st.maxId - ID_MARGIN : null;
       // Counts for the status line: each row that is not reported goes in one bucket.
-      const stats = { rows: listings.length, promoted: 0, shop: 0, old: 0 };
+      const stats = { rows: listings.length, promoted: 0, shop: 0 };
       const hits = [];
       for (const l of listings) {
-        const why = baseline || seen.has(l.id) ? 'seen' : rejectReason(l, w, { minId, gate, now });
+        const why = baseline || seen.has(l.id) ? 'seen' : rejectReason(l, w, { minId, prevMaxId, gate, now: respondedAt });
         if (!why) hits.push(l);
         else if (l.shop) stats.shop++;
         else if (l.promoted) stats.promoted++;
-        else if (why === 'old') stats.old++;
       }
 
-      const nums = listings.filter(l => l.num !== null).map(l => l.num);
-      if (nums.length) st.maxId = Math.max(st.maxId ?? 0, ...nums);
-      st.seen = [...new Set([...listings.map(l => l.id), ...st.seen])].slice(0, SEEN_MAX);
+      for (const l of listings) if (l.num !== null) siteMax = Math.max(siteMax ?? 0, l.num);
+      if (siteMax !== null) st.maxId = Math.max(st.maxId ?? 0, siteMax);
+      if (baseline) {
+        st.baselineAt = now;
+        st.baseMaxId = st.maxId;
+        st.empty = !listings.some(l => !l.related);
+      } else if (listings.some(l => !l.related)) {
+        st.empty = false;
+      }
+
+      // Remember ids only while they could still pass the number check; older ones are
+      // rejected by number anyway. Ids without a number are kept by recency.
+      const floor = st.maxId !== null ? Math.max(st.maxId - ID_MARGIN, st.baseMaxId ?? -Infinity) : -Infinity;
+      const ids = [...new Set([...listings.map(l => l.id), ...st.seen])];
+      st.seen = [
+        ...ids.filter(id => idNumber(id) !== null && idNumber(id) > floor).slice(0, SEEN_MAX),
+        ...ids.filter(id => idNumber(id) === null).slice(0, OTHER_IDS_MAX),
+      ];
       Object.assign(st, {
         total: res.total, truncated: res.truncated, catKeys: res.catKeys || st.catKeys || null,
         stats, lastOkAt: now, lastError: null,
       });
-      if (baseline) st.baselineAt = now;
 
       // A listing found by several searches is kept once, with all their names.
       const label = watchLabel(w);
@@ -185,11 +212,36 @@ async function updateBadge() {
   }
 }
 
+// Version 1.0.0 saved the common condition ids in every category, but some categories use
+// their own (a used car is 14049, not 32), which made such a search find nothing.
+async function migrateConditions() {
+  const { watches = [] } = await chrome.storage.local.get('watches');
+  const updates = new Map(); // search id -> { from: old ids, to: mapped conditions }
+  for (const w of watches) {
+    if (!w.l1 || !w.conditions?.length) continue;
+    let options;
+    try { options = await fetchConditions(w.l1, w.l2); } catch { continue; }
+    const to = matchConditions(savedConditions(w), options, { keepUnknown: true });
+    if (to.map(c => c.id).join() !== w.conditions.join()) updates.set(w.id, { from: w.conditions.join(), to });
+  }
+  if (!updates.size) return;
+  // Re-read, and leave alone any search whose conditions were edited meanwhile.
+  const { watches: current = [] } = await chrome.storage.local.get('watches');
+  for (const w of current) {
+    const u = updates.get(w.id);
+    if (!u || w.conditions?.join() !== u.from) continue;
+    w.conditions = u.to.map(c => c.id);
+    w.conditionLabels = u.to.map(c => c.label);
+  }
+  await chrome.storage.local.set({ watches: current });
+}
+
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   const { settings } = await chrome.storage.local.get('settings');
   if (!settings) await chrome.storage.local.set({ settings: DEFAULT_SETTINGS });
   await ensureAlarm();
   if (reason === 'install') chrome.runtime.openOptionsPage();
+  if (reason === 'update') await migrateConditions();
 });
 
 chrome.runtime.onStartup.addListener(ensureAlarm);

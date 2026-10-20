@@ -20,8 +20,11 @@
 export const API_URL = 'https://www.marktplaats.nl/lrp/api/search';
 export const SITE_URL = 'https://www.marktplaats.nl';
 export const PAGE_SIZE = 100;      // the API maximum
-export const MAX_PAGES = 3;        // per check, to get past the dagtoppers in broad searches
+export const MAX_PAGES = 5;        // per check, to get past the dagtoppers in broad searches
 export const ID_MARGIN = 100000;   // ≈ 6 hours of listings site-wide; tolerates late publication
+// A busy category (Huis en Inrichting), asked once per round for the newest listing number
+// on the whole site, so a narrow search doesn't measure "new" against a days-old listing.
+const REFERENCE_CATEGORY = '504';
 
 export const DEFAULT_SETTINGS = {
   intervalMin: 5,       // minutes between checks
@@ -157,10 +160,9 @@ export function parseListing(raw) {
   const loc = raw.location || {};
   const id = String(raw.itemId || '');
   const traits = Array.isArray(raw.traits) ? raw.traits : [];
-  const m = id.match(/^m(\d+)$/);
   return {
     id,
-    num: m ? Number(m[1]) : null,   // placement order, private listings only
+    num: idNumber(id),              // placement order, private listings only
     title: raw.title || '(geen titel)',
     description: raw.description || '',
     priceCents: raw.priceInfo?.priceCents ?? 0,
@@ -178,6 +180,11 @@ export function parseListing(raw) {
     related: raw.searchType === 'kNN',
     date: raw.date || '',
   };
+}
+
+export function idNumber(id) {
+  const m = /^m(\d+)$/.exec(id);
+  return m ? Number(m[1]) : null;
 }
 
 // An ordinary private listing that matches the search, ranked by its (bump) date.
@@ -240,11 +247,15 @@ export function passesFilters(l, w) {
 }
 
 // Why an unseen listing is not reported as new, or null when it is new.
-//   minId:  listings numbered at or below this were placed before the previous check
-//   gate:   earliest placement day a new listing can have (see gateDay)
-export function rejectReason(l, w, { minId = null, gate = null, now = Date.now() } = {}) {
+//   minId:     listings numbered at or below this were online before the previous check
+//   prevMaxId: highest number known at the previous check; above it a listing is new for sure
+//   gate:      earliest placement day a new listing can have (see gateDay); only consulted
+//              when the number doesn't settle it
+//   now:       when the response arrived, to read "Vandaag"/"Gisteren" as Marktplaats meant it
+export function rejectReason(l, w, { minId = null, prevMaxId = null, gate = null, now = Date.now() } = {}) {
   if (!passesFilters(l, w)) return 'filtered';
   if (l.num !== null && minId !== null && l.num <= minId) return 'old';
+  if (l.num !== null && prevMaxId !== null && l.num > prevMaxId) return null;
   const day = listingDay(l.date, now);
   if (gate !== null && day !== null && day < gate) return 'old';
   return null;
@@ -271,14 +282,17 @@ async function fetchPage(w, offset, since) {
 }
 
 // Fetches newest-first pages until it has what it needs:
-//   stopAt:     stop once an ordinary listing numbered at or below this shows up
-//               (everything after it was already known at the previous check)
-//   minOrganic: or once this many ordinary listings were seen
-// Stops anyway at the end of the results or after maxPages (then truncated = true).
+//   stopAt:     the highest number known at the previous check. Pages are read until one
+//               holds ordinary listings but none numbered above it: rows are sorted by
+//               (bump) date, so everything below is older. A single bumped old listing high
+//               up on a page does not end the scan.
+//   minOrganic: without stopAt, read until this many ordinary listings were seen.
+// Stops anyway at the end of the results (complete = true) or after maxPages
+// (truncated = true).
 export async function fetchListings(w, { since = null, stopAt = null, minOrganic = 1, maxPages = MAX_PAGES } = {}) {
   const listings = [];
   const ids = new Set();
-  let total = null, catKeys = null, truncated = false;
+  let total = null, catKeys = null, truncated = false, complete = false;
   for (let page = 0; ; page++) {
     const r = await fetchPage(w, page * PAGE_SIZE, since);
     total ??= r.total;
@@ -286,12 +300,23 @@ export async function fetchListings(w, { since = null, stopAt = null, minOrganic
     for (const l of r.listings) {
       if (!ids.has(l.id)) { ids.add(l.id); listings.push(l); }
     }
-    if (r.listings.length < PAGE_SIZE) break;
-    const organic = listings.filter(isOrganic);
-    if (stopAt !== null ? organic.some(l => l.num <= stopAt) : organic.length >= minOrganic) break;
+    if (r.listings.length < PAGE_SIZE) { complete = true; break; }
+    const pageOrganic = r.listings.filter(isOrganic);
+    const done = stopAt !== null
+      ? pageOrganic.length > 0 && !pageOrganic.some(l => l.num > stopAt)
+      : listings.filter(isOrganic).length >= minOrganic;
+    if (done) break;
     if (page + 1 >= maxPages) { truncated = true; break; }
   }
-  return { total, listings, catKeys, truncated };
+  return { total, listings, catKeys, truncated, complete };
+}
+
+// The newest listing number on the whole site, from listings offered in the last minutes
+// in a busy category. Any number seen is a safe lower bound; null if nothing came back.
+export async function fetchSiteMaxId(now = Date.now()) {
+  const { listings } = await fetchPage({ ...newWatch(), l1: REFERENCE_CATEGORY }, 0, now - 10 * 60000);
+  const nums = listings.filter(l => l.num !== null).map(l => l.num);
+  return nums.length ? Math.max(...nums) : null;
 }
 
 // Condition options (id + label) as the chosen category itself offers them.
@@ -305,6 +330,27 @@ export async function fetchConditions(l1, l2) {
   return (facet?.attributeGroup || [])
     .filter(g => Number.isFinite(g.attributeValueId))
     .map(g => ({ id: g.attributeValueId, label: g.attributeValueLabel || g.attributeValueKey || String(g.attributeValueId) }));
+}
+
+// Ticked conditions ({id, label}) translated to a category's own options: same id, or
+// else the option with the same label (a "Gebruikt" saved as 32 is 14049 for cars).
+// keepUnknown keeps ticks the category doesn't offer instead of dropping them.
+export function matchConditions(checked, options, { keepUnknown = false } = {}) {
+  const out = [];
+  for (const c of checked) {
+    const hit = options.find(o => o.id === c.id)
+      || options.find(o => o.label.toLowerCase() === String(c.label).toLowerCase());
+    const pick = hit || (keepUnknown ? c : null);
+    if (pick && !out.some(o => o.id === pick.id)) out.push(pick);
+  }
+  return out;
+}
+
+// A search's saved conditions with their labels.
+export function savedConditions(w) {
+  return (w.conditions || []).map((id, i) => ({
+    id, label: w.conditionLabels?.[i] || CONDITIONS.find(c => c.id === id)?.label || String(id),
+  }));
 }
 
 const euro = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' });

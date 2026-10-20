@@ -26,12 +26,13 @@ Een zoekopdracht met alleen een categorie (zonder zoekterm) werkt ook.
 Alleen advertenties die **na de vorige controle geplaatst** zijn. Bij het opslaan onthoudt de Speurder wat er nu al staat; daarna meldt hij alleen nieuw geplaatste advertenties. Pas je de filters aan, dan begint hij opnieuw.
 
 Marktplaats zet bij "nieuwste eerst" ook oude advertenties bovenaan: dagtoppers, betaald omhoog geplaatste advertenties en winkeladvertenties (Admarkt). Die krijgen allemaal de datum *Vandaag*. De Speurder herkent ze zo:
-- Elke gewone advertentie heeft een volgnummer (`m2455384599`) dat oploopt met het moment van plaatsen en gelijk blijft als de advertentie omhoog wordt geplaatst. Alleen advertenties met een nummer hoger dan wat al bekend was, tellen als nieuw (met een marge van een paar uur voor advertenties die iets later online komen).
+- Elke gewone advertentie heeft een volgnummer (`m2455384599`) dat oploopt met het moment van plaatsen en gelijk blijft als de advertentie omhoog wordt geplaatst. Alleen advertenties met een nummer hoger dan wat al bekend was, tellen als nieuw (met een marge van een paar uur voor advertenties die iets later online komen). Wat al online stond toen je de zoekopdracht opsloeg, telt nooit als nieuw.
+- Per controleronde haalt de Speurder één keer het nieuwste volgnummer van heel Marktplaats op (uit de drukke categorie Huis en Inrichting). Zo heeft ook een smalle zoekopdracht, waarvan de nieuwste advertentie dagen oud is, een actueel ijkpunt.
 - Advertenties met een datum van vóór de vorige controle tellen nooit als nieuw.
 - Winkeladvertenties en "vergelijkbare advertenties" die Marktplaats aanvult en niet bij je zoekterm passen, tellen nooit mee.
-- Bij brede zoekopdrachten kijkt de Speurder verder dan de eerste pagina, voorbij de dagtoppers (maximaal 300 resultaten per controle).
+- Bij brede zoekopdrachten kijkt de Speurder verder dan de eerste pagina, voorbij de dagtoppers, tot hij een pagina zonder nieuwe advertenties tegenkomt (maximaal 500 resultaten per controle).
 
-Op de instellingenpagina zie je per zoekopdracht wat de laatste controle heeft overgeslagen.
+Op de instellingenpagina zie je per zoekopdracht wat de laatste controle heeft overgeslagen, en een waarschuwing als een zoekopdracht op Marktplaats helemaal niets vindt.
 
 ## Meldingen
 - **Pop-up** (klik op het icoon): lijst met nieuwe advertenties, met foto, prijs, plaats en afstand. Ongelezen zijn gemarkeerd; het badge-getal telt ze. Met ⟳ controleer je direct.

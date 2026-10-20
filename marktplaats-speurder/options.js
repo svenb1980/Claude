@@ -1,8 +1,8 @@
 import { CATEGORIES } from './categories.js';
 import {
   DEFAULT_SETTINGS, CONDITIONS, DISTANCES_KM, MAX_PAGES, PAGE_SIZE, newWatch, validateWatch, fetchListings,
-  fetchConditions, passesFilters, formatPrice, formatDistance, normalizePostcode, websiteUrl, searchKey, timeAgo,
-  watchLabel, el, startOfDay,
+  fetchConditions, matchConditions, savedConditions, passesFilters, formatPrice, formatDistance, normalizePostcode,
+  websiteUrl, searchKey, timeAgo, watchLabel, el, startOfDay,
 } from './lib.js';
 
 const $ = id => document.getElementById(id);
@@ -28,7 +28,7 @@ function summary(w) {
   else if (w.priceMin !== '') parts.push(`vanaf € ${w.priceMin}`);
   else if (w.priceMax !== '') parts.push(`tot € ${w.priceMax}`);
   if (w.postcode) parts.push(normalizePostcode(w.postcode) + (w.distanceKm ? ` + ${w.distanceKm} km` : ''));
-  if (w.conditions.length) parts.push(conditionOptions(w).filter(c => w.conditions.includes(c.id)).map(c => c.label).join('/'));
+  if (w.conditions.length) parts.push(savedConditions(w).map(c => c.label).join('/'));
   if (w.exclude.trim()) parts.push(`zonder: ${w.exclude.trim()}`);
   if (!w.inDescription) parts.push('alleen titel');
   return parts.join(' · ');
@@ -40,7 +40,9 @@ function statusText(w, st) {
   if (st.lastError) return { text: `⚠ ${st.lastError} (${timeAgo(st.lastCheck)})`, warn: true };
   if (!st.baselineAt) return { text: 'Wacht op eerste controle…' };
   const newToday = st.today?.day === startOfDay(Date.now()) ? st.today.n : 0;
-  return { text: `Gecontroleerd ${timeAgo(st.lastCheck)} · ${newToday} nieuw vandaag` };
+  const text = `Gecontroleerd ${timeAgo(st.lastCheck)} · ${newToday} nieuw vandaag`;
+  if (st.empty) return { text: `${text} · ⚠ Deze zoekopdracht vindt op dit moment niets op Marktplaats; controleer de filters met Testen.`, warn: true };
+  return { text };
 }
 
 // What the last check skipped, so a quiet search can be explained.
@@ -50,7 +52,6 @@ function statsText(st) {
   const parts = [];
   if (s.promoted) parts.push(count(s.promoted, 'betaalde promotie', 'betaalde promoties'));
   if (s.shop) parts.push(count(s.shop, 'winkeladvertentie', 'winkeladvertenties'));
-  if (s.old) parts.push(count(s.old, 'oudere advertentie', 'oudere advertenties'));
   let text = parts.length ? `Laatste controle: ${s.rows} bekeken, waarvan ${parts.join(', ')} niet als nieuw geteld.` : '';
   if (st.truncated) text += ' Zeer brede zoekopdracht: niet alles kon worden nagelopen; maak hem specifieker.';
   return text.trim();
@@ -154,10 +155,7 @@ function renderConditions(options, checked) {
 
 // The saved conditions with their labels, followed by the common ones.
 function conditionOptions(w) {
-  const saved = w.conditions.map((id, i) => ({
-    id, label: w.conditionLabels?.[i] || CONDITIONS.find(c => c.id === id)?.label || String(id),
-  }));
-  return [...saved, ...CONDITIONS.filter(c => !w.conditions.includes(c.id))];
+  return [...savedConditions(w), ...CONDITIONS.filter(c => !w.conditions.includes(c.id))];
 }
 
 function checkedConditions() {
@@ -169,7 +167,7 @@ function checkedConditions() {
 async function loadConditions(l1, l2) {
   const request = ++conditionsRequest;
   if (!l1) {
-    renderConditions(CONDITIONS, checkedConditions().map(c => c.id));
+    renderConditions(CONDITIONS, matchConditions(checkedConditions(), CONDITIONS).map(c => c.id));
     $('conditionsHint').textContent = 'Niets aangevinkt = alles.';
     return;
   }
@@ -177,8 +175,9 @@ async function loadConditions(l1, l2) {
   let options, failed = false;
   try { options = await fetchConditions(l1, l2); } catch { options = CONDITIONS; failed = true; }
   if (request !== conditionsRequest) return; // the category changed meanwhile
-  const checked = checkedConditions();
-  // Without the category's own list, keep what was ticked rather than silently dropping it.
+  // A tick the category knows under another id (a "Gebruikt" car is 14049, not 32) is
+  // moved to that id. Without the category's own list, ticks are kept rather than dropped.
+  const checked = matchConditions(checkedConditions(), options, { keepUnknown: failed });
   if (failed) options = [...checked.filter(c => !options.some(o => o.id === c.id)), ...options];
   renderConditions(options, checked.map(c => c.id));
   $('conditionsHint').textContent = failed ? 'Kon de opties van deze categorie niet ophalen.'
@@ -254,19 +253,23 @@ $('test').onclick = async () => {
   box.replaceChildren(el('span', { className: 'muted', textContent: 'Bezig met zoeken op Marktplaats…' }));
   const request = ++previewRequest;
   try {
-    const { listings, total, truncated } = await fetchListings(w, { minOrganic: 5 });
+    const { listings, total, truncated, complete } = await fetchListings(w, { minOrganic: 5 });
     if (request !== previewRequest) return;
     const promoted = listings.filter(l => l.promoted).length;
     const shop = listings.filter(l => l.shop).length;
+    // Marktplaats pads small results with "similar" listings and counts them in its total.
+    const related = listings.filter(l => l.related).length;
+    const found = complete ? listings.length - related : Math.max(0, (total ?? listings.length) - related);
     const hits = listings.filter(l => !l.promoted && !l.shop && passesFilters(l, w));
-    const lines = [el('div', { textContent: `${total ?? listings.length} advertenties gevonden.` })];
+    const lines = [el('div', { textContent: `${count(found, 'advertentie', 'advertenties')} gevonden.` +
+      (related ? ` Marktplaats vulde aan met ${related} vergelijkbare die niet aan de zoekopdracht voldoen; die tellen niet mee.` : '') })];
     const skipped = [
       promoted ? count(promoted, 'betaalde promotie', 'betaalde promoties') : '',
       shop ? count(shop, 'winkeladvertentie', 'winkeladvertenties') : '',
     ].filter(Boolean);
     if (skipped.length) {
       lines.push(el('div', { className: 'muted', textContent:
-        `Bovenaan de eerste ${listings.length} staan ${skipped.join(' en ')}. ` +
+        `Bovenaan de eerste ${listings.length} ${promoted + shop === 1 ? 'staat' : 'staan'} ${skipped.join(' en ')}. ` +
         (w.skipAds ? 'Die tellen nooit als nieuw.' : 'Promoties tellen alleen als ze echt nieuw geplaatst zijn, winkeladvertenties nooit.') }));
     }
     if (hits.length) {
