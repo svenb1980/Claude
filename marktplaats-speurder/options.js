@@ -1,12 +1,13 @@
 import { CATEGORIES } from './categories.js';
 import {
   DEFAULT_SETTINGS, CONDITIONS, DISTANCES_KM, MAX_PAGES, PAGE_SIZE, newWatch, validateWatch, fetchListings,
-  fetchConditions, passesFilters, formatPrice, formatDistance, normalizePostcode, websiteUrl, timeAgo, watchLabel, el,
-  startOfDay,
+  fetchConditions, passesFilters, formatPrice, formatDistance, normalizePostcode, websiteUrl, searchKey, timeAgo,
+  watchLabel, el, startOfDay,
 } from './lib.js';
 
 const $ = id => document.getElementById(id);
 let editingId = null; // id of the search open in the editor, null for a new one
+let previewRequest = 0; // so a slow earlier Testen run can't overwrite a later one
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,11 +34,12 @@ function summary(w) {
   return parts.join(' · ');
 }
 
-function statusText(w, st, newToday) {
+function statusText(w, st) {
   if (!w.active) return { text: 'Gepauzeerd' };
   if (!st) return { text: 'Wacht op eerste controle…' };
   if (st.lastError) return { text: `⚠ ${st.lastError} (${timeAgo(st.lastCheck)})`, warn: true };
   if (!st.baselineAt) return { text: 'Wacht op eerste controle…' };
+  const newToday = st.today?.day === startOfDay(Date.now()) ? st.today.n : 0;
   return { text: `Gecontroleerd ${timeAgo(st.lastCheck)} · ${newToday} nieuw vandaag` };
 }
 
@@ -79,8 +81,7 @@ function checkNow() {
 // ── Search list ──────────────────────────────────────────────────────────────
 
 async function renderWatches() {
-  const { watches = [], state = {}, finds = [] } = await chrome.storage.local.get(['watches', 'state', 'finds']);
-  const today = startOfDay(Date.now());
+  const { watches = [], state = {} } = await chrome.storage.local.get(['watches', 'state']);
   const box = $('watches');
   box.replaceChildren();
 
@@ -90,8 +91,9 @@ async function renderWatches() {
   }
 
   for (const w of watches) {
-    const newToday = finds.filter(f => f.foundAt >= today && (f.watchIds || [f.watchId]).includes(w.id)).length;
-    const st = statusText(w, state[w.id], newToday);
+    // State of an earlier version of this search (e.g. edited while paused) doesn't count.
+    const cur = state[w.id]?.key === searchKey(w) ? state[w.id] : null;
+    const st = statusText(w, cur);
 
     const toggle = el('input', { type: 'checkbox', checked: w.active, title: 'Actief' });
     toggle.onchange = async () => {
@@ -113,15 +115,15 @@ async function renderWatches() {
       toast('Zoekopdracht verwijderd.');
     };
 
-    const site = websiteUrl(w, state[w.id]?.catKeys);
-    const stats = statsText(state[w.id]);
+    const site = websiteUrl(w, cur?.catKeys);
+    const stats = statsText(cur);
     box.append(el('div', { className: 'watch' + (w.active ? '' : ' off') },
       el('label', { className: 'switch' }, toggle),
       el('div', { className: 'info' },
         el('div', { className: 'name', textContent: watchLabel(w) }),
         el('div', { className: 'small muted', textContent: summary(w) }),
         el('div', { className: 'small ' + (st.warn ? 'warn' : 'muted'), textContent: st.text }),
-        stats ? el('div', { className: 'small ' + (state[w.id].truncated ? 'warn' : 'muted'), textContent: stats }) : null,
+        stats ? el('div', { className: 'small ' + (cur.truncated ? 'warn' : 'muted'), textContent: stats }) : null,
         site ? el('a', { className: 'small', href: site, target: '_blank', rel: 'noopener', textContent: 'Open op Marktplaats ↗' }) : null),
       el('div', { className: 'actions' }, edit, del)));
   }
@@ -159,22 +161,28 @@ function conditionOptions(w) {
 }
 
 function checkedConditions() {
-  return [...document.querySelectorAll('input[name=condition]:checked')].map(cb => Number(cb.value));
+  return [...document.querySelectorAll('input[name=condition]:checked')]
+    .map(cb => ({ id: Number(cb.value), label: cb.nextElementSibling.textContent }));
 }
 
-async function loadConditions(l1, l2, checked = checkedConditions()) {
+// Ticked boxes are read after the request, so clicks made while it loads are kept.
+async function loadConditions(l1, l2) {
   const request = ++conditionsRequest;
   if (!l1) {
-    renderConditions(CONDITIONS, checked);
+    renderConditions(CONDITIONS, checkedConditions().map(c => c.id));
     $('conditionsHint').textContent = 'Niets aangevinkt = alles.';
     return;
   }
   $('conditionsHint').textContent = 'Opties van deze categorie ophalen…';
-  let options = CONDITIONS;
-  try { options = await fetchConditions(l1, l2); } catch { /* offline: keep the common ids */ }
+  let options, failed = false;
+  try { options = await fetchConditions(l1, l2); } catch { options = CONDITIONS; failed = true; }
   if (request !== conditionsRequest) return; // the category changed meanwhile
-  renderConditions(options, checked);
-  $('conditionsHint').textContent = options.length ? 'Niets aangevinkt = alles.' : 'Deze categorie heeft geen conditiefilter.';
+  const checked = checkedConditions();
+  // Without the category's own list, keep what was ticked rather than silently dropping it.
+  if (failed) options = [...checked.filter(c => !options.some(o => o.id === c.id)), ...options];
+  renderConditions(options, checked.map(c => c.id));
+  $('conditionsHint').textContent = failed ? 'Kon de opties van deze categorie niet ophalen.'
+    : options.length ? 'Niets aangevinkt = alles.' : 'Deze categorie heeft geen conditiefilter.';
 }
 
 function setupEditorFields() {
@@ -202,10 +210,11 @@ function openEditor(w) {
   $('distanceKm').value = w.distanceKm;
   $('distanceKm').disabled = !w.postcode;
   renderConditions(conditionOptions(w), w.conditions); // right away, so a quick save keeps them
-  loadConditions(w.l1, w.l2, w.conditions);
+  loadConditions(w.l1, w.l2);
   for (const f of ['inDescription', 'skipAds', 'active']) $(f).checked = w[f];
   $('errors').hidden = true;
   $('preview').hidden = true;
+  previewRequest++;
   editor.dataset.id = w.id;
   editor.showModal();
   $(editingId ? 'name' : 'query').focus();
@@ -222,8 +231,8 @@ function readEditor() {
     priceMax: $('priceMax').value.trim(),
     postcode: normalizePostcode($('postcode').value),
     distanceKm: $('postcode').value.trim() ? $('distanceKm').value : '',
-    conditions: checkedConditions(),
-    conditionLabels: [...document.querySelectorAll('input[name=condition]:checked')].map(cb => cb.nextElementSibling.textContent),
+    conditions: checkedConditions().map(c => c.id),
+    conditionLabels: checkedConditions().map(c => c.label),
     inDescription: $('inDescription').checked,
     exclude: $('exclude').value.trim(),
     skipAds: $('skipAds').checked,
@@ -243,8 +252,10 @@ $('test').onclick = async () => {
   const box = $('preview');
   box.hidden = false;
   box.replaceChildren(el('span', { className: 'muted', textContent: 'Bezig met zoeken op Marktplaats…' }));
+  const request = ++previewRequest;
   try {
     const { listings, total, truncated } = await fetchListings(w, { minOrganic: 5 });
+    if (request !== previewRequest) return;
     const promoted = listings.filter(l => l.promoted).length;
     const shop = listings.filter(l => l.shop).length;
     const hits = listings.filter(l => !l.promoted && !l.shop && passesFilters(l, w));
@@ -256,7 +267,7 @@ $('test').onclick = async () => {
     if (skipped.length) {
       lines.push(el('div', { className: 'muted', textContent:
         `Bovenaan de eerste ${listings.length} staan ${skipped.join(' en ')}. ` +
-        'Promoties tellen alleen als ze echt nieuw geplaatst zijn, winkeladvertenties nooit.' }));
+        (w.skipAds ? 'Die tellen nooit als nieuw.' : 'Promoties tellen alleen als ze echt nieuw geplaatst zijn, winkeladvertenties nooit.') }));
     }
     if (hits.length) {
       lines.push(el('div', { textContent: 'Nieuwste gewone advertenties (na jouw filters):' }));
@@ -275,6 +286,7 @@ $('test').onclick = async () => {
     }
     box.replaceChildren(...lines);
   } catch (e) {
+    if (request !== previewRequest) return;
     box.replaceChildren(el('span', { className: 'warn', textContent: `Zoeken mislukt: ${e.message}` }));
   }
 };
@@ -358,7 +370,7 @@ $('importFile').onchange = async () => {
 // ── Start ────────────────────────────────────────────────────────────────────
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.watches || changes.state || changes.finds)) renderWatches();
+  if (area === 'local' && (changes.watches || changes.state)) renderWatches();
 });
 
 setupEditorFields();

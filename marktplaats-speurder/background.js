@@ -11,7 +11,8 @@
 //   readUntil – listings found after this time count as unread; only written by the popup
 
 import {
-  DEFAULT_SETTINGS, ID_MARGIN, fetchListings, rejectReason, gateDay, searchKey, formatPrice, formatDistance, watchLabel,
+  DEFAULT_SETTINGS, ID_MARGIN, fetchListings, rejectReason, gateDay, startOfDay, searchKey, formatPrice, formatDistance,
+  watchLabel,
 } from './lib.js';
 
 const ALARM = 'check';
@@ -84,20 +85,15 @@ async function doCheckAll() {
 
       const seen = new Set(st.seen);
       const minId = st.maxId !== null ? st.maxId - ID_MARGIN : null;
-      const stats = {
-        rows: listings.length,
-        promoted: listings.filter(l => l.promoted).length,
-        shop: listings.filter(l => l.shop).length,
-        old: 0,
-      };
+      // Counts for the status line: each row that is not reported goes in one bucket.
+      const stats = { rows: listings.length, promoted: 0, shop: 0, old: 0 };
       const hits = [];
-      if (!baseline) {
-        for (const l of listings) {
-          if (seen.has(l.id)) continue;
-          const why = rejectReason(l, w, { minId, gate, now });
-          if (why === 'old') stats.old++;
-          if (!why) hits.push(l);
-        }
+      for (const l of listings) {
+        const why = baseline || seen.has(l.id) ? 'seen' : rejectReason(l, w, { minId, gate, now });
+        if (!why) hits.push(l);
+        else if (l.shop) stats.shop++;
+        else if (l.promoted) stats.promoted++;
+        else if (why === 'old') stats.old++;
       }
 
       const nums = listings.filter(l => l.num !== null).map(l => l.num);
@@ -123,6 +119,9 @@ async function doCheckAll() {
         }
       }
       st.lastNew = fresh.length;
+      const today = startOfDay(now);
+      if (st.today?.day !== today) st.today = { day: today, n: 0 };
+      st.today.n += hits.length;
       if (fresh.length) {
         finds.unshift(...fresh);
         finds.splice(FINDS_MAX);

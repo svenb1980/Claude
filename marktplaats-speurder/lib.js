@@ -340,6 +340,16 @@ export function timeAgo(ms, now = Date.now()) {
   return new Date(ms).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+// "vandaag", "gisteren" or "17 okt" for a find. The date word was stored relative to
+// the moment the listing was found, so it is resolved against foundAt first.
+export function placedLabel(f, now = Date.now()) {
+  const day = listingDay(f.date, f.foundAt || now);
+  if (day === null) return '';
+  if (day === startOfDay(now)) return 'vandaag';
+  if (day === daysBefore(now, 1)) return 'gisteren';
+  return new Date(day).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+}
+
 export function watchLabel(w) {
   return w.name.trim() || w.query.trim() || 'Zoekopdracht';
 }

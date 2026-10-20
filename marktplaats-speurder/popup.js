@@ -1,4 +1,4 @@
-import { formatPrice, formatDistance, timeAgo, watchLabel, el } from './lib.js';
+import { formatPrice, formatDistance, placedLabel, timeAgo, watchLabel, el } from './lib.js';
 
 const isTab = new URLSearchParams(location.search).get('view') === 'tab';
 if (isTab) document.body.classList.add('tab');
@@ -74,7 +74,7 @@ async function render() {
           where ? el('span', { className: 'meta', textContent: `  ${where}` }) : null),
         el('div', { className: 'meta', textContent: [
           findWatchNames(f).join(', '),
-          f.date ? `geplaatst ${f.date.toLowerCase()}` : '',
+          placedLabel(f) ? `geplaatst ${placedLabel(f)}` : '',
           `gevonden ${timeAgo(f.foundAt)}`,
         ].filter(Boolean).join(' · ') }))));
   }
