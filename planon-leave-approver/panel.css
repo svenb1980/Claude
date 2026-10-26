@@ -1,0 +1,25 @@
+#plv-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:440px;max-height:70vh;display:flex;flex-direction:column;
+  background:#fff;color:#1d2733;border:1px solid #cfd8e3;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);
+  font:13px/1.4 "Segoe UI",system-ui,sans-serif}
+#plv-panel *{box-sizing:border-box}
+#plv-panel .plv-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#1072be;color:#fff;border-radius:12px 12px 0 0;cursor:pointer}
+#plv-panel .plv-head b{font-size:14px}
+#plv-panel .plv-body{padding:10px 14px;overflow:auto}
+#plv-panel.plv-min .plv-body{display:none}
+#plv-panel table{width:100%;border-collapse:collapse;margin:6px 0}
+#plv-panel td,#plv-panel th{padding:4px 4px;border-bottom:1px solid #eef2f6;text-align:left;vertical-align:top}
+#plv-panel th{font-weight:600;color:#556}
+#plv-panel .ok{color:#137a3a;font-weight:600}
+#plv-panel .bad{color:#b3261e;font-weight:600}
+#plv-panel .muted{color:#778}
+#plv-panel .plv-btns{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+#plv-panel button{border:0;border-radius:16px;padding:6px 12px;cursor:pointer;background:#1072be;color:#fff;font:inherit}
+#plv-panel button.sec{background:#e7edf4;color:#1d2733}
+#plv-panel button.stop{background:#b3261e}
+#plv-panel button:disabled{opacity:.45;cursor:default}
+#plv-panel details{margin-top:6px}
+#plv-panel label{display:flex;align-items:center;gap:6px;margin:3px 0}
+#plv-panel input[type=time],#plv-panel input[type=number]{width:80px;padding:2px 4px}
+#plv-panel .plv-log{font:11px/1.35 Consolas,monospace;background:#f5f7fa;border-radius:6px;padding:6px;max-height:120px;overflow:auto;white-space:pre-wrap}
+.plv-highlight{outline:4px solid #f5a623 !important;outline-offset:3px;animation:plvpulse 1s infinite}
+@keyframes plvpulse{50%{outline-color:#ffd27a}}
