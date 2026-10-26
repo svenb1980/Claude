@@ -19,26 +19,78 @@ function toInstanceHost(host) {
     : host;
 }
 
-// Locate the API session: the "sid" cookie on the org's instance domain.
-async function getApiSession(tabUrl) {
-  const pageHost  = new URL(tabUrl).hostname;
-  const orgPrefix = pageHost.split('.')[0];
+// ── API sessions ──────────────────────────────────────────────────────────────
+// The API needs a "sid" cookie from an API-capable domain of the org (the instance
+// domain *.my.salesforce.com, or a Visualforce / *.force.com domain), never the
+// Lightning one. Such a cookie can outlive its session: then Salesforce answers 401
+// INVALID_SESSION_ID. So we try every candidate, remember the one that works, and when
+// none does, open the org's home page once in a background tab to renew the login.
 
+const workingSid = new Map(); // instanceUrl → sid that the API accepted last
+let renewing = null, renewedAt = 0;
+
+async function sidCandidates(tabUrl) {
+  const pageHost    = new URL(tabUrl).hostname;
+  const orgPrefix   = pageHost.split('.')[0];
   const instanceUrl = `https://${toInstanceHost(pageHost)}`;
+
+  const all = await chrome.cookies.getAll({ name: 'sid' });
+  const apiCapable = all.filter(c => /(^|\.)(salesforce\.com|force\.com)$/.test(c.domain.replace(/^\./, ''))
+                                  && !c.domain.includes('lightning.force.com'));
   const direct = await chrome.cookies.get({ url: instanceUrl, name: 'sid' });
-  if (direct?.value) return { instanceUrl, sid: direct.value };
+  const ordered = [
+    workingSid.get(instanceUrl),
+    direct?.value,
+    ...apiCapable.filter(c => c.domain.includes(orgPrefix)).map(c => c.value),
+    ...apiCapable.map(c => c.value),
+  ].filter(Boolean);
+  return { instanceUrl, sids: [...new Set(ordered)] };
+}
 
-  // Fallback: scan every "sid" cookie and pick one on a Salesforce instance domain
-  // belonging to the same org (covers sandboxes and enhanced-domain variants).
-  const all        = await chrome.cookies.getAll({ name: 'sid' });
-  const candidates = all.filter(c => c.domain.includes('salesforce.com'));
-  const match      = candidates.find(c => c.domain.includes(orgPrefix)) ?? candidates[0];
-  if (!match) return null;
+// Visiting the org's instance domain signs in again (SSO) and sets a fresh API session cookie.
+function renewLogin(instanceUrl) {
+  if (renewing) return renewing;
+  renewing = (async () => {
+    const tab = await chrome.tabs.create({ url: `${instanceUrl}/`, active: false });
+    try {
+      await new Promise(resolve => {
+        const done = () => { chrome.tabs.onUpdated.removeListener(listener); clearTimeout(timer); resolve(); };
+        const listener = (id, info, t) => {
+          if (id === tab.id && info.status === 'complete' && /lightning\.force\.com/.test(t.url || '')) done();
+        };
+        const timer = setTimeout(done, 25000);
+        chrome.tabs.onUpdated.addListener(listener);
+      });
+      await new Promise(r => setTimeout(r, 1500)); // let the cookies settle
+    } finally {
+      chrome.tabs.remove(tab.id).catch(() => {});
+      renewedAt = Date.now();
+      renewing = null;
+    }
+  })();
+  return renewing;
+}
 
-  return {
-    instanceUrl: `https://${match.domain.replace(/^\./, '')}`,
-    sid:         match.value,
-  };
+// GET a Salesforce REST path (e.g. "/services/data/v59.0/query/?q=…") with the first
+// session the API accepts.
+async function apiFetch(tabUrl, path) {
+  if (!tabUrl) throw new Error('No Salesforce tab to take the login from.');
+  for (let round = 0; round < 2; round++) {
+    const { instanceUrl, sids } = await sidCandidates(tabUrl);
+    for (const sid of sids) {
+      const res = await fetch(instanceUrl + path, { headers: { 'Authorization': `Bearer ${sid}`, 'Accept': 'application/json' } });
+      if (res.status !== 401) {
+        if (res.ok) workingSid.set(instanceUrl, sid);
+        return res;
+      }
+    }
+    if (workingSid.get(instanceUrl) && sids.includes(workingSid.get(instanceUrl))) workingSid.delete(instanceUrl);
+    // Nothing accepted: renew the login once (at most every 2 minutes), then try again.
+    if (round === 0 && Date.now() - renewedAt > 120000) { await renewLogin(instanceUrl); continue; }
+    break;
+  }
+  throw new Error('Salesforce did not accept any login from this browser for the API. '
+                + 'Open Salesforce in this browser, sign in again, then rerun.');
 }
 
 // ── Auto-run when the Mass Approval page opens ────────────────────────────────
@@ -169,11 +221,8 @@ async function hoursCheck(tabUrl, apiVersion) {
   const expected = (await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text()))
     .split('\n').map(n => n.trim()).filter(Boolean);
 
-  const session = await getApiSession(tabUrl);
-  if (!session) throw new Error('No Salesforce API session cookie found.');
-  const url = `${session.instanceUrl}/services/data/${apiVersion || DEFAULT_API_VERSION}`
-            + `/analytics/reports/${HOURS_REPORT_ID}?includeDetails=true`;
-  const res = await fetch(url, { headers: { 'Authorization': `Bearer ${session.sid}`, 'Accept': 'application/json' } });
+  const res = await apiFetch(tabUrl, `/services/data/${apiVersion || DEFAULT_API_VERSION}`
+                                   + `/analytics/reports/${HOURS_REPORT_ID}?includeDetails=true`);
   if (!res.ok) throw new Error(`Report API ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const rep = await res.json();
 
@@ -233,27 +282,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Run a SOQL query against the Salesforce REST API on the org's instance domain.
   if (msg.action === 'soqlQuery') {
     (async () => {
-      const tabUrl = sender.tab?.url;
-      if (!tabUrl) return sendResponse({ error: 'No sender tab URL available.' });
-
-      const session = await getApiSession(tabUrl);
-      if (!session) {
-        return sendResponse({
-          error: 'No Salesforce API session cookie found. Open the org\'s ' +
-                 'my.salesforce.com domain once in this browser profile, then retry.',
-        });
-      }
-
       const version = msg.apiVersion || DEFAULT_API_VERSION;
-      const url = `${session.instanceUrl}/services/data/${version}/query/`
-                + `?q=${encodeURIComponent(msg.soql)}`;
-
-      const res = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${session.sid}`,
-          'Accept':        'application/json',
-        },
-      });
+      const res = await apiFetch(sender.tab?.url, `/services/data/${version}/query/?q=${encodeURIComponent(msg.soql)}`);
 
       if (!res.ok) {
         return sendResponse({ error: `API ${res.status}: ${(await res.text()).slice(0, 200)}` });

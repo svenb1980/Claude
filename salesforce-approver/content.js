@@ -323,17 +323,20 @@ async function runApproval() {
       const label = row.querySelector('[data-column-id="col-name"] a')?.textContent?.trim() ?? id;
 
       // Ensure we have assignment info for this record (fetch per-record if missing)
+      // Without the assignment we can't tell overhead from project work: stop rather than
+      // approve unchecked (the next rows would fail the same way).
       if (!assignMap[id]) {
         try {
           const single = await fetchAssignments([id]);
-          assignMap[id] = single[id] ?? { name: '(unknown)', isOverhead: false };
+          if (!single[id]) throw new Error('timecard not found in Salesforce');
+          assignMap[id] = single[id];
         } catch (apiErr) {
-          log(`⚠️  API error fetching ${id}: ${apiErr.message}`, '#FFCA28');
-          assignMap[id] = { name: '(unknown)', isOverhead: false };
+          fatal(`Couldn't check the assignment of ${label} (${apiErr.message}). Stopped, so nothing unchecked gets approved.`);
+          break;
         }
       }
 
-      const info = assignMap[id] ?? { name: '(not in API result)', isOverhead: false };
+      const info = assignMap[id];
 
       log('', '');
       log(`── ${processed + 1}: ${label}`, '#90CAF9');
