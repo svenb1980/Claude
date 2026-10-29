@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Salesforce Hours Approver",
-  "version": "1.3",
+  "version": "1.4",
   "description": "Approves Salesforce timecards when Mass Approval opens — rejects overhead, approves the rest, checks everyone has 40 hours in the hours report, and reports back to Action Desk.",
   "permissions": [
     "activeTab",
     "scripting",
     "tabs",
-    "cookies",
     "storage"
   ],
   "host_permissions": [

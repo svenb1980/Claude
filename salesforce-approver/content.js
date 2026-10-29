@@ -107,44 +107,23 @@ function getLightningBtn(maRoot, dataId) {
   return shadowOrSelf(lb)?.querySelector('button') ?? null;
 }
 
-// ── Salesforce REST API helpers ────────────────────────────────────────────────
-// The query itself runs in background.js: the sid cookie on *.lightning.force.com
-// is a Lightning-only session that /services/data rejects (INVALID_SESSION_ID), and
-// calling the org's *.my.salesforce.com instance domain from here would be blocked
-// by CORS. The service worker has host permissions for both and bypasses CORS.
+// ── Assignment from the grid ───────────────────────────────────────────────────
+// The grid shows each timecard's assignment, so no Salesforce API (and no API login)
+// is needed. The column is found by its header text.
 
-// Try to read the API version the page uses; fall back to v59.0
-function apiVer() {
-  return window.Salesforce?.settings?.apiVersion ?? 'v59.0';
+function findAssignmentColumn(bryntumRoot) {
+  const headers = [...bryntumRoot.querySelectorAll('.b-grid-header[data-column-id]')]
+    .map(h => ({ id: h.dataset.columnId, text: (h.textContent || '').replace(/\s+/g, ' ').trim() }));
+  // Only the assignment says whether time is overhead; a project name does not.
+  const col = headers.find(h => /assignment|toewijzing/i.test(h.text));
+  return { col, headers: headers.map(h => h.text).filter(Boolean) };
 }
 
-async function soqlQuery(soql) {
-  const resp = await chrome.runtime.sendMessage({
-    action:     'soqlQuery',
-    soql,
-    apiVersion: apiVer(),
-  });
-  if (!resp)       throw new Error('No response from background service worker.');
-  if (resp.error)  throw new Error(resp.error);
-  return resp.data;
-}
-
-// ── Batch-fetch Assignment names ───────────────────────────────────────────────
-
-async function fetchAssignments(recordIds) {
-  const idList = recordIds.map(id => `'${id}'`).join(',');
-  const soql   = `SELECT Id, pse__Assignment__r.Name `
-               + `FROM pse__Timecard_Header__c `
-               + `WHERE Id IN (${idList})`;
-
-  const data = await soqlQuery(soql);
-
-  const map  = {};
-  for (const rec of data.records) {
-    const name = rec.pse__Assignment__r?.Name ?? '';
-    map[rec.Id] = { name, isOverhead: /overhead/i.test(name) };
-  }
-  return map;
+function readAssignment(row, col) {
+  const cell = row.querySelector(`[data-column-id="${CSS.escape(col.id)}"]`);
+  const name = (cell?.textContent || '').replace(/\s+/g, ' ').trim();
+  if (!name) throw new Error(`the ${col.text} cell is empty or not shown`);
+  return { name, isOverhead: /overhead/i.test(name) };
 }
 
 // ── Overlay ────────────────────────────────────────────────────────────────────
@@ -300,13 +279,19 @@ async function runApproval() {
     }
     log('✓ Grid located.', '#69F0AE');
 
+    const { col: assignCol, headers } = findAssignmentColumn(bryntumRoot);
+    if (!assignCol) {
+      fatal(`No Assignment column found in the grid (columns: ${headers.join(', ') || 'none'}). Stopped, so nothing unchecked gets approved.`);
+      return;
+    }
+    log(`✓ Overhead check uses the "${assignCol.text}" column.`, '#69F0AE');
+
     // ── 2. Process rows until none remain ───────────────────────────────────
     // The Bryntum grid virtualizes DOM rows (renders only visible rows).
     // Snapshotting rendered rows can miss items (commonly ~19 visible rows).
     // Instead, iterate until no more rows are present and fetch assignment
     // info per-record on-demand.
 
-    let assignMap = {};
     let processed = 0;
     const attempted = new Set(); // ids already handled — a row that stays put means it failed
     // Loop over the *current* first row repeatedly until the grid is empty
@@ -325,18 +310,12 @@ async function runApproval() {
       // Ensure we have assignment info for this record (fetch per-record if missing)
       // Without the assignment we can't tell overhead from project work: stop rather than
       // approve unchecked (the next rows would fail the same way).
-      if (!assignMap[id]) {
-        try {
-          const single = await fetchAssignments([id]);
-          if (!single[id]) throw new Error('timecard not found in Salesforce');
-          assignMap[id] = single[id];
-        } catch (apiErr) {
-          fatal(`Couldn't check the assignment of ${label} (${apiErr.message}). Stopped, so nothing unchecked gets approved.`);
-          break;
-        }
+      let info;
+      try { info = readAssignment(row, assignCol); }
+      catch (err) {
+        fatal(`Couldn't read the assignment of ${label} (${err.message}). Stopped, so nothing unchecked gets approved.`);
+        break;
       }
-
-      const info = assignMap[id];
 
       log('', '');
       log(`── ${processed + 1}: ${label}`, '#90CAF9');
@@ -455,7 +434,7 @@ async function runHoursCheck() {
   log('', '');
   log('📊 Checking the hours report…', '#90CAF9');
   try {
-    const resp = await chrome.runtime.sendMessage({ action: 'hoursCheck', apiVersion: apiVer() });
+    const resp = await chrome.runtime.sendMessage({ action: 'hoursCheck' });
     if (!resp)      throw new Error('No response from background service worker.');
     if (resp.error) throw new Error(resp.error);
     const h = resp.result;

@@ -1,15 +1,11 @@
 // Service worker — handles privileged operations content scripts cannot do directly.
 //
-// Why the REST API calls live here instead of in content.js:
-//  1. The "sid" cookie set on *.lightning.force.com is a Lightning-only session and
-//     is rejected by /services/data with INVALID_SESSION_ID. The API session is the
-//     "sid" cookie on the org's instance domain (*.my.salesforce.com).
-//  2. Calling the instance domain from a content script is a cross-origin request and
-//     Salesforce does not send CORS headers unless the origin is whitelisted in Setup.
-//     Fetches made from an extension service worker with matching host_permissions
-//     bypass CORS entirely, so the request succeeds.
-
-const DEFAULT_API_VERSION = 'v59.0';
+// No Salesforce API: since late October 2026 Salesforce rejects the browser's session
+// cookies for /services/data (401 INVALID_SESSION_ID). The overhead check reads the
+// assignment from the Mass Approval grid (content.js), and the hours check downloads
+// the hours report as CSV with the normal browser login, like the report's Export.
+// Fetches from this service worker carry the org's cookies and are not blocked by CORS,
+// because the extension has host permissions for the Salesforce domains.
 
 // myorg.lightning.force.com → myorg.my.salesforce.com
 function toInstanceHost(host) {
@@ -19,37 +15,15 @@ function toInstanceHost(host) {
     : host;
 }
 
-// ── API sessions ──────────────────────────────────────────────────────────────
-// The API needs a "sid" cookie from an API-capable domain of the org (the instance
-// domain *.my.salesforce.com, or a Visualforce / *.force.com domain), never the
-// Lightning one. Such a cookie can outlive its session: then Salesforce answers 401
-// INVALID_SESSION_ID. So we try every candidate, remember the one that works, and when
-// none does, open the org's home page once in a background tab to renew the login.
+// ── Renewing the login ────────────────────────────────────────────────────────
+// Visiting the org's instance domain signs in again (SSO) and refreshes its session
+// cookie. Done in a background tab, at most every 2 minutes.
 
-const workingSid = new Map(); // instanceUrl → sid that the API accepted last
 let renewing = null, renewedAt = 0;
 
-async function sidCandidates(tabUrl) {
-  const pageHost    = new URL(tabUrl).hostname;
-  const orgPrefix   = pageHost.split('.')[0];
-  const instanceUrl = `https://${toInstanceHost(pageHost)}`;
-
-  const all = await chrome.cookies.getAll({ name: 'sid' });
-  const apiCapable = all.filter(c => /(^|\.)(salesforce\.com|force\.com)$/.test(c.domain.replace(/^\./, ''))
-                                  && !c.domain.includes('lightning.force.com'));
-  const direct = await chrome.cookies.get({ url: instanceUrl, name: 'sid' });
-  const ordered = [
-    workingSid.get(instanceUrl),
-    direct?.value,
-    ...apiCapable.filter(c => c.domain.includes(orgPrefix)).map(c => c.value),
-    ...apiCapable.map(c => c.value),
-  ].filter(Boolean);
-  return { instanceUrl, sids: [...new Set(ordered)] };
-}
-
-// Visiting the org's instance domain signs in again (SSO) and sets a fresh API session cookie.
 function renewLogin(instanceUrl) {
   if (renewing) return renewing;
+  if (Date.now() - renewedAt < 120000) return Promise.resolve();
   renewing = (async () => {
     const tab = await chrome.tabs.create({ url: `${instanceUrl}/`, active: false });
     try {
@@ -69,28 +43,6 @@ function renewLogin(instanceUrl) {
     }
   })();
   return renewing;
-}
-
-// GET a Salesforce REST path (e.g. "/services/data/v59.0/query/?q=…") with the first
-// session the API accepts.
-async function apiFetch(tabUrl, path) {
-  if (!tabUrl) throw new Error('No Salesforce tab to take the login from.');
-  for (let round = 0; round < 2; round++) {
-    const { instanceUrl, sids } = await sidCandidates(tabUrl);
-    for (const sid of sids) {
-      const res = await fetch(instanceUrl + path, { headers: { 'Authorization': `Bearer ${sid}`, 'Accept': 'application/json' } });
-      if (res.status !== 401) {
-        if (res.ok) workingSid.set(instanceUrl, sid);
-        return res;
-      }
-    }
-    if (workingSid.get(instanceUrl) && sids.includes(workingSid.get(instanceUrl))) workingSid.delete(instanceUrl);
-    // Nothing accepted: renew the login once (at most every 2 minutes), then try again.
-    if (round === 0 && Date.now() - renewedAt > 120000) { await renewLogin(instanceUrl); continue; }
-    break;
-  }
-  throw new Error('Salesforce did not accept any login from this browser for the API. '
-                + 'Open Salesforce in this browser, sign in again, then rerun.');
 }
 
 // ── Auto-run when the Mass Approval page opens ────────────────────────────────
@@ -160,90 +112,108 @@ const HOURS_REQUIRED  = 40;
 const nameKey = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
 
-const asNumber = cell => {
-  const v = cell?.value && typeof cell.value === 'object' ? cell.value.amount : cell?.value;
-  const n = typeof v === 'number' ? v : parseFloat(String(cell?.label ?? '').replace(',', '.'));
+// The report as CSV, exactly what Export → Details Only gives. Without a valid login
+// Salesforce answers with a login page (HTML) instead: then renew the login and retry once.
+async function downloadReportCsv(tabUrl) {
+  if (!tabUrl) throw new Error('No Salesforce tab to take the login from.');
+  const instanceUrl = `https://${toInstanceHost(new URL(tabUrl).hostname)}`;
+  const url = `${instanceUrl}/${HOURS_REPORT_ID}?export=1&enc=UTF-8&xf=csv`;
+  for (let round = 0; round < 2; round++) {
+    const res  = await fetch(url, { credentials: 'include' });
+    const text = res.ok ? await res.text() : '';
+    if (res.ok && !/^\s*</.test(text)) return text;
+    if (round === 0) { await renewLogin(instanceUrl); continue; }
+    throw new Error(res.ok
+      ? 'Salesforce sent a login page instead of the report. Open the hours report in this browser once, then rerun.'
+      : `Report download failed (${res.status}).`);
+  }
+}
+
+// Minimal CSV reader: quoted fields, doubled quotes, commas and newlines inside quotes.
+function parseCsv(text) {
+  const rows = []; let row = [], field = '', quoted = false;
+  text = text.replace(/^﻿/, '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// "40", "40.00", "40,00", "1.234,50" and "1,234.50" all read as numbers.
+function toNumber(v) {
+  let t = String(v || '').replace(/[^\d.,-]/g, '');
+  if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+  else if (t.includes(',')) t = t.replace(',', '.');
+  const n = parseFloat(t);
   return Number.isFinite(n) ? n : 0;
-};
+}
 
-// Hours per person, from the report's detail rows, or from its groupings when it is
-// grouped by person without details.
-function hoursFromReport(rep) {
-  const ext     = rep.reportExtendedMetadata || {};
-  const columns = rep.reportMetadata?.detailColumns || [];
-  const info    = ext.detailColumnInfo || {};
-  const label   = c => info[c]?.label || c;
-  const numeric = c => ['double', 'currency', 'int', 'percent'].includes(info[c]?.dataType);
+const DAY = /(mon|tues|wednes|thurs|fri|satur|sun)day|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag/i;
 
-  const nameCol  = columns.findIndex(c => /resource|employee|contact|person/i.test(label(c)));
-  const totalCol = columns.findIndex(c => numeric(c) && /total.*hour|hours?$/i.test(label(c)) && !/day$|monday|tuesday|wednesday|thursday|friday|saturday|sunday/i.test(label(c)));
-  const dayCols  = columns.map((c, i) => numeric(c) && /(mon|tues|wednes|thurs|fri|satur|sun)day/i.test(label(c)) ? i : -1).filter(i => i >= 0);
+// Hours per person from the CSV, plus the weeks it covers when it has a date column.
+function hoursFromCsv(text) {
+  const rows = parseCsv(text);
+  // The data ends at the first empty line; Salesforce adds the report name, filters and a
+  // copyright notice after it.
+  const end  = rows.findIndex((r, i) => i > 0 && r.every(c => !c.trim()));
+  const [head, ...data] = end > 0 ? rows.slice(0, end) : rows;
+  if (!head || !data.length) throw new Error('The report download was empty.');
+  const label = head.map(h => h.trim());
+
+  const nameCol  = label.findIndex(h => /resource|employee|contact|person|medewerker/i.test(h) && !/id$/i.test(h));
+  const hourCols = label.map((h, i) => /hour|uren/i.test(h) && !DAY.test(h) ? i : -1).filter(i => i >= 0);
+  const totalCol = hourCols.find(i => /total|totaal/i.test(label[i])) ?? hourCols[0] ?? -1;
+  const dayCols  = label.map((h, i) => DAY.test(h) && /hour|uren/i.test(h) ? i : -1).filter(i => i >= 0);
+  if (nameCol < 0 || (totalCol < 0 && !dayCols.length)) {
+    throw new Error(`Could not find a person column and an hours column in the report (columns: ${label.join(', ')}).`);
+  }
+  const dateCol = label.findIndex(h => /week|start date|date|datum/i.test(h));
 
   const hours = new Map(); // nameKey → { name, hours }
-  const add = (name, h) => {
+  const dates = [];
+  for (const r of data) {
+    const name = (r[nameCol] || '').trim();
     const k = nameKey(name);
-    if (!k) return;
+    if (!k) continue;
+    const h = totalCol >= 0 ? toNumber(r[totalCol]) : dayCols.reduce((s, i) => s + toNumber(r[i]), 0);
     const e = hours.get(k) || { name, hours: 0 };
     e.hours += h;
     hours.set(k, e);
-  };
-
-  if (nameCol >= 0 && (totalCol >= 0 || dayCols.length)) {
-    for (const [key, fact] of Object.entries(rep.factMap || {})) {
-      if (!key.endsWith('!T') || !Array.isArray(fact.rows)) continue;
-      for (const row of fact.rows) {
-        const cells = row.dataCells || [];
-        const h = totalCol >= 0 ? asNumber(cells[totalCol]) : dayCols.reduce((s, i) => s + asNumber(cells[i]), 0);
-        add(cells[nameCol]?.label, h);
-      }
-    }
-    if (hours.size) return hours;
+    if (dateCol >= 0 && r[dateCol]) dates.push(r[dateCol].trim());
   }
-
-  // Grouped by person: the first grouping level, with the hours aggregate.
-  const aggs   = rep.reportMetadata?.aggregates || [];
-  const aggIdx = aggs.findIndex(a => /hour/i.test(ext.aggregateColumnInfo?.[a]?.label || a));
-  const groups = rep.groupingsDown?.groupings || [];
-  if (aggIdx >= 0 && groups.length) {
-    for (const g of groups) add(g.label, asNumber(rep.factMap?.[`${g.key}!T`]?.aggregates?.[aggIdx]));
-    return hours;
-  }
-  throw new Error('Could not find a person column and an hours column in the report.');
+  const uniq = [...new Set(dates)];
+  const period = !uniq.length ? `report of ${new Date().toISOString().slice(0, 10)}`
+               : uniq.length === 1 ? `week of ${uniq[0]}` : `${uniq[0]} – ${uniq[uniq.length - 1]}`;
+  return { hours, period };
 }
 
-function reportPeriod(rep) {
-  const f = rep.reportMetadata?.standardDateFilter;
-  if (f?.startDate && f?.endDate) return `${f.startDate} – ${f.endDate}`;
-  return (f?.durationValue || 'report period').replace(/_/g, ' ').toLowerCase();
-}
-
-async function hoursCheck(tabUrl, apiVersion) {
+async function hoursCheck(tabUrl) {
   const expected = (await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text()))
     .split('\n').map(n => n.trim()).filter(Boolean);
 
-  const res = await apiFetch(tabUrl, `/services/data/${apiVersion || DEFAULT_API_VERSION}`
-                                   + `/analytics/reports/${HOURS_REPORT_ID}?includeDetails=true`);
-  if (!res.ok) throw new Error(`Report API ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const rep = await res.json();
-
-  const hours   = hoursFromReport(rep);
+  const { hours, period } = hoursFromCsv(await downloadReportCsv(tabUrl));
   const missing = expected
     .map(name => ({ name, hours: Math.round((hours.get(nameKey(name))?.hours ?? 0) * 100) / 100, inReport: hours.has(nameKey(name)) }))
     .filter(p => p.hours < HOURS_REQUIRED);
 
-  return {
-    period:   reportPeriod(rep),
-    required: HOURS_REQUIRED,
-    checked:  expected.length,
-    missing,
-    truncated: rep.allData === false, // more than 2,000 detail rows: totals may be incomplete
-  };
+  return { period, required: HOURS_REQUIRED, checked: expected.length, missing, truncated: false };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.action === 'hoursCheck') {
-    hoursCheck(sender.tab?.url, msg.apiVersion)
+    hoursCheck(sender.tab?.url)
       .then(result => sendResponse({ result }))
       .catch(err => sendResponse({ error: err.message }));
     return true;
@@ -277,22 +247,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true });
     });
     return true;
-  }
-
-  // Run a SOQL query against the Salesforce REST API on the org's instance domain.
-  if (msg.action === 'soqlQuery') {
-    (async () => {
-      const version = msg.apiVersion || DEFAULT_API_VERSION;
-      const res = await apiFetch(sender.tab?.url, `/services/data/${version}/query/?q=${encodeURIComponent(msg.soql)}`);
-
-      if (!res.ok) {
-        return sendResponse({ error: `API ${res.status}: ${(await res.text()).slice(0, 200)}` });
-      }
-
-      sendResponse({ data: await res.json() });
-    })().catch(err => sendResponse({ error: err.message }));
-
-    return true; // keep channel open for async sendResponse
   }
 
   // Open a new tab (window.open() from content scripts is blocked by popup blockers)
