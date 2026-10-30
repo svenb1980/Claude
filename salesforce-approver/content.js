@@ -241,7 +241,7 @@ async function countdown(seconds) {
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 // Must match BUILD in background.js (see there).
-const BUILD = '1.4.2';
+const BUILD = '1.4.3';
 
 async function runApproval() {
   createOverlay();

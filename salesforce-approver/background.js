@@ -130,7 +130,9 @@ function readReportTables() {
 
 async function readReportPage(tabUrl) {
   const origin = new URL(tabUrl).origin;
-  const tab = await chrome.tabs.create({ url: `${origin}/lightning/r/Report/${HOURS_REPORT_ID}/view`, active: false });
+  // An open report tab is used as it is (and left open); otherwise one is opened in the background.
+  const [open] = await chrome.tabs.query({ url: `${origin}/lightning/r/Report/${HOURS_REPORT_ID}/*` });
+  const tab = open || await chrome.tabs.create({ url: `${origin}/lightning/r/Report/${HOURS_REPORT_ID}/view`, active: false });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   let seen = null, lastCount = -1;
   try {
@@ -149,7 +151,7 @@ async function readReportPage(tabUrl) {
     const heads = (seen || []).flatMap(a => a.heads || []).filter(Boolean);
     throw new Error(`Couldn't read the hours report page${heads.length ? ` (tables found: ${heads.join(' / ')})` : ' (no table found)'}.`);
   } finally {
-    chrome.tabs.remove(tab.id).catch(() => {});
+    if (!open) chrome.tabs.remove(tab.id).catch(() => {});
   }
 }
 
@@ -227,7 +229,9 @@ function hoursFromRows(head, data) {
   const uniq = [...new Set(dates)];
   const period = !uniq.length ? `report of ${new Date().toISOString().slice(0, 10)}`
                : uniq.length === 1 ? `week of ${uniq[0]}` : `${uniq[0]} – ${uniq[uniq.length - 1]}`;
-  return { hours, period };
+  const diag = `read "${label[nameCol]}" and "${totalCol >= 0 ? label[totalCol] : 'day columns'}", `
+             + `${data.length} rows, first names: ${[...hours.values()].slice(0, 3).map(e => `"${e.name.slice(0, 40)}"`).join(', ') || 'none'}`;
+  return { hours, period, diag };
 }
 
 async function hoursCheck(tabUrl) {
@@ -242,10 +246,22 @@ async function hoursCheck(tabUrl) {
     try { const t = await readReportPage(tabUrl); parsed = hoursFromRows(t.heads, t.rows); }
     catch (err) { throw new Error(`${err.message} The CSV ${dl.why}.`); }
   }
-  const { hours, period } = parsed;
-  const missing = expected
-    .map(name => ({ name, hours: Math.round((hours.get(nameKey(name))?.hours ?? 0) * 100) / 100, inReport: hours.has(nameKey(name)) }))
-    .filter(p => p.hours < HOURS_REQUIRED);
+  const { hours, period, diag } = parsed;
+
+  // A person matches a report row when every word of their name is in it: report cells can
+  // carry extra text (a link's hidden label, an ID), and "Kleijn, André de" still matches.
+  const words   = n => nameKey(n).split(' ').filter(Boolean);
+  const entries = [...hours.values()].map(e => ({ ...e, words: new Set(words(e.name)) }));
+  const people  = expected.map(name => {
+    const want = words(name);
+    const hits = entries.filter(e => want.every(w => e.words.has(w)));
+    return { name, hours: Math.round(hits.reduce((s, e) => s + e.hours, 0) * 100) / 100, inReport: hits.length > 0 };
+  });
+  // Nobody found at all means the wrong table or column was read, not that everyone forgot.
+  if (!people.some(p => p.inReport)) {
+    throw new Error(`Read the report but found none of the ${expected.length} names, so it was probably read wrongly (${diag}).`);
+  }
+  const missing = people.filter(p => p.hours < HOURS_REQUIRED);
 
   return { period, required: HOURS_REQUIRED, checked: expected.length, missing, truncated: false };
 }
@@ -253,7 +269,7 @@ async function hoursCheck(tabUrl) {
 // Must match BUILD in content.js. Chrome reads content.js from disk on every run but keeps
 // this service worker until the extension is reloaded, so after copying new files without
 // clicking reload the two can differ.
-const BUILD = '1.4.2';
+const BUILD = '1.4.3';
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
