@@ -240,8 +240,20 @@ async function countdown(seconds) {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
+// Must match BUILD in background.js (see there).
+const BUILD = '1.4.1';
+
 async function runApproval() {
   createOverlay();
+  const bg = await chrome.runtime.sendMessage({ action: 'build' }).catch(() => null);
+  if (bg?.build !== BUILD) {
+    report.cancelled = true; // a half-updated extension: don't approve, don't report
+    setTitle('⏱ Hours Approver — needs a reload');
+    log(`❌ The extension is half updated (page script ${BUILD}, background ${bg?.build || 'older'}).`, '#FF5252');
+    log('   Open chrome://extensions and click the reload icon on Salesforce Hours Approver, then reload this page.', '#FFCA28');
+    log('   Also remove any second copy of the extension.', '#FFCA28');
+    return;
+  }
   if (report.auto && !(await countdown(10))) {
     report.cancelled = true;
     setTitle('⏱ Hours Approver — cancelled');

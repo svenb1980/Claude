@@ -210,7 +210,14 @@ async function hoursCheck(tabUrl) {
   return { period, required: HOURS_REQUIRED, checked: expected.length, missing, truncated: false };
 }
 
+// Must match BUILD in content.js. Chrome reads content.js from disk on every run but keeps
+// this service worker until the extension is reloaded, so after copying new files without
+// clicking reload the two can differ.
+const BUILD = '1.4.1';
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  if (msg.action === 'build') { sendResponse({ build: BUILD }); return; }
 
   if (msg.action === 'hoursCheck') {
     hoursCheck(sender.tab?.url)
