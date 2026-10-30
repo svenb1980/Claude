@@ -241,7 +241,7 @@ async function countdown(seconds) {
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 // Must match BUILD in background.js (see there).
-const BUILD = '1.4.3';
+const BUILD = '1.4.4';
 
 async function runApproval() {
   createOverlay();
@@ -448,7 +448,7 @@ async function runHoursCheck() {
   try {
     const resp = await chrome.runtime.sendMessage({ action: 'hoursCheck' });
     if (!resp)      throw new Error('No response from background service worker.');
-    if (resp.error) throw new Error(resp.error);
+    if (resp.error) throw Object.assign(new Error(resp.error), { debug: resp.debug });
     const h = resp.result;
     report.hours = h;
     log(`   Period: ${h.period}`, '#888');
@@ -462,7 +462,7 @@ async function runHoursCheck() {
       log(`  • ${p.name} — ${p.inReport ? `${p.hours}h of ${h.required}h` : 'not in the report'}`, '#FF7043');
     }
   } catch (err) {
-    report.hours = { error: err.message };
+    report.hours = { error: err.message, debug: err.debug };
     log(`❌ Hours check failed: ${err.message}`, '#FF5252');
   }
 }

@@ -125,7 +125,23 @@ function readReportTables() {
     if (headIdx < 0) { if (grid[0]) found.push({ heads: grid[0] }); continue; }
     found.push({ heads: grid[headIdx], rows: grid.slice(headIdx + 1).map(r => [...r].map(v => v ?? '')) });
   }
-  return found.find(f => f.rows?.length) || { tables: tables.length, heads: found.map(f => f.heads.join(' | ')).slice(0, 3) };
+  // A snapshot of every table, so a wrong read can be diagnosed from the report in Action Desk.
+  const cut = r => [...r].map(v => String(v ?? '').slice(0, 60));
+  const snapshot = {
+    frame: location.href.slice(0, 160),
+    tables: tables.map((t, i) => ({
+      rows: t.rows.length, inShadow: t.getRootNode() !== document,
+      cls: String(t.className || '').slice(0, 80),
+      heads: cut(found[i]?.heads || []),
+      first: (found[i]?.rows || []).slice(0, 12).map(cut),
+      last: (found[i]?.rows || []).slice(-4).map(cut),
+    })),
+    scroll: [...document.querySelectorAll('*')].filter(el => el.scrollHeight > el.clientHeight + 20 && /auto|scroll/.test(getComputedStyle(el).overflowY))
+      .slice(0, 5).map(el => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} ${el.clientHeight}/${el.scrollHeight}`),
+    text: (document.body?.innerText || '').match(/(total records|records|rows|rijen)[^\n]{0,40}/i)?.[0] || '',
+  };
+  const hit = found.find(f => f.rows?.length);
+  return hit ? { ...hit, snapshot } : { tables: tables.length, heads: found.map(f => f.heads.join(' | ')).slice(0, 3), snapshot };
 }
 
 async function readReportPage(tabUrl) {
@@ -142,6 +158,7 @@ async function readReportPage(tabUrl) {
       const answers = results.map(r => r.result).filter(Boolean);
       const hit = answers.find(a => a.rows?.length);
       if (hit) {
+        hit.frames = answers.map(a => a.snapshot);
         if (hit.rows.length === lastCount) return hit; // two reads alike: the table has finished loading
         lastCount = hit.rows.length;
         continue;
@@ -243,10 +260,10 @@ async function hoursCheck(tabUrl) {
   let parsed;
   if (dl.csv) parsed = hoursFromCsv(dl.csv);
   else {
-    try { const t = await readReportPage(tabUrl); parsed = hoursFromRows(t.heads, t.rows); }
+    try { const t = await readReportPage(tabUrl); parsed = hoursFromRows(t.heads, t.rows); parsed.frames = t.frames; }
     catch (err) { throw new Error(`${err.message} The CSV ${dl.why}.`); }
   }
-  const { hours, period, diag } = parsed;
+  const { hours, period, diag, frames } = parsed;
 
   // A person matches a report row when every word of their name is in it: report cells can
   // carry extra text (a link's hidden label, an ID), and "Kleijn, André de" still matches.
@@ -258,18 +275,20 @@ async function hoursCheck(tabUrl) {
     return { name, hours: Math.round(hits.reduce((s, e) => s + e.hours, 0) * 100) / 100, inReport: hits.length > 0 };
   });
   // Nobody found at all means the wrong table or column was read, not that everyone forgot.
+  const debug = JSON.stringify({ csv: dl.why || 'csv ok', diag, found: entries.map(e => [e.name.slice(0, 50), e.hours]), frames }).slice(0, 30000);
   if (!people.some(p => p.inReport)) {
-    throw new Error(`Read the report but found none of the ${expected.length} names, so it was probably read wrongly (${diag}).`);
+    throw Object.assign(new Error(`Read the report but found none of the ${expected.length} names, so it was probably read wrongly (${diag}).`), { debug });
   }
   const missing = people.filter(p => p.hours < HOURS_REQUIRED);
 
-  return { period, required: HOURS_REQUIRED, checked: expected.length, missing, truncated: false };
+  // debug is kept with the report in Action Desk (your private store) to diagnose a wrong read.
+  return { period, required: HOURS_REQUIRED, checked: expected.length, missing, truncated: false, debug };
 }
 
 // Must match BUILD in content.js. Chrome reads content.js from disk on every run but keeps
 // this service worker until the extension is reloaded, so after copying new files without
 // clicking reload the two can differ.
-const BUILD = '1.4.3';
+const BUILD = '1.4.4';
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
@@ -278,7 +297,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'hoursCheck') {
     hoursCheck(sender.tab?.url)
       .then(result => sendResponse({ result }))
-      .catch(err => sendResponse({ error: err.message }));
+      .catch(err => sendResponse({ error: err.message, debug: err.debug }));
     return true;
   }
 

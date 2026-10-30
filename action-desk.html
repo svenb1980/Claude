@@ -1566,7 +1566,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
     const h = r.hours && typeof r.hours === "object" ? r.hours : null;
     const hours = h && {
       period: sfClip(h.period, 60), required: num(h.required) || 40, checked: num(h.checked),
-      error: sfClip(h.error, 200), truncated: !!h.truncated,
+      error: sfClip(h.error, 300), truncated: !!h.truncated, debug: sfClip(h.debug, 30000),
       missing: (Array.isArray(h.missing) ? h.missing : []).slice(0, 100).map(m => ({
         name: sfClip(m && m.name, 120), hours: Math.max(0, +(m && m.hours) || 0), inReport: !!(m && m.inReport) })),
     };
@@ -1574,7 +1574,7 @@ Only use issue keys that appear in the snapshot. Be specific and practical; no f
       approved: num(r.approved), rejected: num(r.rejected), errors: num(r.errors), fatal: sfClip(r.fatal, 300), rows, hours };
   }
   // The browser copy keeps counts only: no names of rejected timecards or of people short on hours.
-  const sfCounts = r => Object.assign({}, r, { rows: [], hours: r.hours && Object.assign({}, r.hours, { missing: [], short: r.hours.missing.length }) });
+  const sfCounts = r => Object.assign({}, r, { rows: [], hours: r.hours && Object.assign({}, r.hours, { missing: [], debug: "", short: r.hours.missing.length }) });
   async function readSf() {
     await Promise.race([syncReadyP, new Promise(r => setTimeout(r, 5000))]);
     if (sfDoc) {
