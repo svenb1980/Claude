@@ -3,7 +3,8 @@
 // No Salesforce API: since late October 2026 Salesforce rejects the browser's session
 // cookies for /services/data (401 INVALID_SESSION_ID). The overhead check reads the
 // assignment from the Mass Approval grid (content.js), and the hours check downloads
-// the hours report as CSV with the normal browser login, like the report's Export.
+// the hours report as CSV with the normal browser login (like the report's Export), or,
+// where the org doesn't serve that, reads the report page in a background tab.
 // Fetches from this service worker carry the org's cookies and are not blocked by CORS,
 // because the extension has host permissions for the Salesforce domains.
 
@@ -13,36 +14,6 @@ function toInstanceHost(host) {
   return host.endsWith(suffix)
     ? host.slice(0, -suffix.length) + '.my.salesforce.com'
     : host;
-}
-
-// ── Renewing the login ────────────────────────────────────────────────────────
-// Visiting the org's instance domain signs in again (SSO) and refreshes its session
-// cookie. Done in a background tab, at most every 2 minutes.
-
-let renewing = null, renewedAt = 0;
-
-function renewLogin(instanceUrl) {
-  if (renewing) return renewing;
-  if (Date.now() - renewedAt < 120000) return Promise.resolve();
-  renewing = (async () => {
-    const tab = await chrome.tabs.create({ url: `${instanceUrl}/`, active: false });
-    try {
-      await new Promise(resolve => {
-        const done = () => { chrome.tabs.onUpdated.removeListener(listener); clearTimeout(timer); resolve(); };
-        const listener = (id, info, t) => {
-          if (id === tab.id && info.status === 'complete' && /lightning\.force\.com/.test(t.url || '')) done();
-        };
-        const timer = setTimeout(done, 25000);
-        chrome.tabs.onUpdated.addListener(listener);
-      });
-      await new Promise(r => setTimeout(r, 1500)); // let the cookies settle
-    } finally {
-      chrome.tabs.remove(tab.id).catch(() => {});
-      renewedAt = Date.now();
-      renewing = null;
-    }
-  })();
-  return renewing;
 }
 
 // ── Auto-run when the Mass Approval page opens ────────────────────────────────
@@ -112,20 +83,73 @@ const HOURS_REQUIRED  = 40;
 const nameKey = n => String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
 
-// The report as CSV, exactly what Export → Details Only gives. Without a valid login
-// Salesforce answers with a login page (HTML) instead: then renew the login and retry once.
+// The report as CSV, exactly what Export → Details Only gives. Some orgs answer this old
+// export link with a web page instead (a sign-in page, or a redirect to Lightning): then
+// we return why, and the caller reads the report page itself.
 async function downloadReportCsv(tabUrl) {
-  if (!tabUrl) throw new Error('No Salesforce tab to take the login from.');
   const instanceUrl = `https://${toInstanceHost(new URL(tabUrl).hostname)}`;
-  const url = `${instanceUrl}/${HOURS_REPORT_ID}?export=1&enc=UTF-8&xf=csv`;
-  for (let round = 0; round < 2; round++) {
-    const res  = await fetch(url, { credentials: 'include' });
-    const text = res.ok ? await res.text() : '';
-    if (res.ok && !/^\s*</.test(text)) return text;
-    if (round === 0) { await renewLogin(instanceUrl); continue; }
-    throw new Error(res.ok
-      ? 'Salesforce sent a login page instead of the report. Open the hours report in this browser once, then rerun.'
-      : `Report download failed (${res.status}).`);
+  const res  = await fetch(`${instanceUrl}/${HOURS_REPORT_ID}?export=1&enc=UTF-8&xf=csv`, { credentials: 'include' });
+  const text = await res.text();
+  if (res.ok && !/^\s*</.test(text)) return { csv: text };
+  const title = (text.match(/<title[^>]*>([^<]*)/i) || [])[1]?.trim();
+  return { why: `download gave ${res.status}${title ? ` "${title}"` : ''} from ${new URL(res.url || instanceUrl).host}` };
+}
+
+// ── Reading the report page ───────────────────────────────────────────────────
+// Opens the report in a background tab and reads the table shown on screen, in every
+// frame and through shadow DOM (Lightning renders reports in an iframe, sometimes with
+// lightning-datatable). Runs inside the page, so it must be self-contained.
+function readReportTables() {
+  const clean = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const tables = [];
+  (function walk(root) {
+    root.querySelectorAll('table').forEach(t => tables.push(t));
+    root.querySelectorAll('*').forEach(el => el.shadowRoot && walk(el.shadowRoot));
+  })(document);
+  const found = [];
+  for (const t of tables) {
+    // Expand rowspan/colspan, so grouped rows carry their group's value (the person).
+    const grid = [];
+    [...t.rows].forEach((tr, r) => {
+      grid[r] = grid[r] || [];
+      let c = 0;
+      for (const cell of tr.cells) {
+        while (grid[r][c] !== undefined) c++;
+        const txt = clean(cell);
+        for (let i = 0; i < (cell.rowSpan || 1); i++)
+          for (let j = 0; j < (cell.colSpan || 1); j++) (grid[r + i] = grid[r + i] || [])[c + j] = txt;
+        c += cell.colSpan || 1;
+      }
+    });
+    const headIdx = [...t.rows].findIndex(tr => tr.querySelector('th') && [...tr.cells].some(c => /hour|uren/i.test(clean(c))));
+    if (headIdx < 0) { if (grid[0]) found.push({ heads: grid[0] }); continue; }
+    found.push({ heads: grid[headIdx], rows: grid.slice(headIdx + 1).map(r => [...r].map(v => v ?? '')) });
+  }
+  return found.find(f => f.rows?.length) || { tables: tables.length, heads: found.map(f => f.heads.join(' | ')).slice(0, 3) };
+}
+
+async function readReportPage(tabUrl) {
+  const origin = new URL(tabUrl).origin;
+  const tab = await chrome.tabs.create({ url: `${origin}/lightning/r/Report/${HOURS_REPORT_ID}/view`, active: false });
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let seen = null, lastCount = -1;
+  try {
+    for (const end = Date.now() + 60000; Date.now() < end;) {
+      await sleep(2500);
+      const results = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: readReportTables }).catch(() => []);
+      const answers = results.map(r => r.result).filter(Boolean);
+      const hit = answers.find(a => a.rows?.length);
+      if (hit) {
+        if (hit.rows.length === lastCount) return hit; // two reads alike: the table has finished loading
+        lastCount = hit.rows.length;
+        continue;
+      }
+      seen = answers;
+    }
+    const heads = (seen || []).flatMap(a => a.heads || []).filter(Boolean);
+    throw new Error(`Couldn't read the hours report page${heads.length ? ` (tables found: ${heads.join(' / ')})` : ' (no table found)'}.`);
+  } finally {
+    chrome.tabs.remove(tab.id).catch(() => {});
   }
 }
 
@@ -169,7 +193,15 @@ function hoursFromCsv(text) {
   const end  = rows.findIndex((r, i) => i > 0 && r.every(c => !c.trim()));
   const [head, ...data] = end > 0 ? rows.slice(0, end) : rows;
   if (!head || !data.length) throw new Error('The report download was empty.');
-  const label = head.map(h => h.trim());
+  return hoursFromRows(head, data);
+}
+
+// Subtotal and total lines on the report page would count a person's hours twice.
+const TOTAL_ROW = /^(sub ?total|grand total|total|totaal|subtotaal|eindtotaal)\b/i;
+
+function hoursFromRows(head, data) {
+  const label = head.map(h => String(h).trim());
+  data = data.filter(r => !r.some(c => TOTAL_ROW.test(String(c).trim())));
 
   const nameCol  = label.findIndex(h => /resource|employee|contact|person|medewerker/i.test(h) && !/id$/i.test(h));
   const hourCols = label.map((h, i) => /hour|uren/i.test(h) && !DAY.test(h) ? i : -1).filter(i => i >= 0);
@@ -202,7 +234,15 @@ async function hoursCheck(tabUrl) {
   const expected = (await fetch(chrome.runtime.getURL('reports.txt')).then(r => r.text()))
     .split('\n').map(n => n.trim()).filter(Boolean);
 
-  const { hours, period } = hoursFromCsv(await downloadReportCsv(tabUrl));
+  if (!tabUrl) throw new Error('No Salesforce tab to take the login from.');
+  const dl = await downloadReportCsv(tabUrl).catch(err => ({ why: err.message }));
+  let parsed;
+  if (dl.csv) parsed = hoursFromCsv(dl.csv);
+  else {
+    try { const t = await readReportPage(tabUrl); parsed = hoursFromRows(t.heads, t.rows); }
+    catch (err) { throw new Error(`${err.message} The CSV ${dl.why}.`); }
+  }
+  const { hours, period } = parsed;
   const missing = expected
     .map(name => ({ name, hours: Math.round((hours.get(nameKey(name))?.hours ?? 0) * 100) / 100, inReport: hours.has(nameKey(name)) }))
     .filter(p => p.hours < HOURS_REQUIRED);
@@ -213,7 +253,7 @@ async function hoursCheck(tabUrl) {
 // Must match BUILD in content.js. Chrome reads content.js from disk on every run but keeps
 // this service worker until the extension is reloaded, so after copying new files without
 // clicking reload the two can differ.
-const BUILD = '1.4.1';
+const BUILD = '1.4.2';
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
