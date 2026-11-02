@@ -96,16 +96,39 @@ async function downloadReportCsv(tabUrl) {
 }
 
 // ── Reading the report page ───────────────────────────────────────────────────
-// Opens the report in a background tab and reads the table shown on screen, in every
-// frame and through shadow DOM (Lightning renders reports in an iframe, sometimes with
-// lightning-datatable). Runs inside the page, so it must be self-contained.
-function readReportTables() {
+// Opens the report (or uses the open report tab) and reads the table shown on screen, in
+// every frame and through shadow DOM. Lightning only renders the rows in view (about 30
+// of thousands of pixels), so we scroll the table's scroll area from top to bottom and
+// collect the rows on the way, de-duplicated by the row's own ID column.
+
+// Runs inside the page, so it must be self-contained. With scrollTo set, it first scrolls
+// the table's scroll area there and waits for Lightning to draw those rows.
+async function readReportTables(scrollTo) {
   const clean = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-  const tables = [];
-  (function walk(root) {
-    root.querySelectorAll('table').forEach(t => tables.push(t));
-    root.querySelectorAll('*').forEach(el => el.shadowRoot && walk(el.shadowRoot));
-  })(document);
+  const allTables = () => {
+    const out = [];
+    (function walk(root) {
+      root.querySelectorAll('table').forEach(t => out.push(t));
+      root.querySelectorAll('*').forEach(el => el.shadowRoot && walk(el.shadowRoot));
+    })(document);
+    return out;
+  };
+  const scrollerOf = t => {
+    for (let el = t?.parentElement; el; el = el.parentElement || el.getRootNode().host) {
+      if (el.scrollHeight > el.clientHeight + 20 && /auto|scroll/.test(getComputedStyle(el).overflowY)) return el;
+    }
+    return null;
+  };
+  const mainTable = ts => ts.find(t => /data-grid-full-table/.test(t.className)) || ts[0];
+
+  let sc = scrollerOf(mainTable(allTables()));
+  if (sc && scrollTo != null) {
+    sc.scrollTop = scrollTo;
+    sc.dispatchEvent(new Event('scroll'));
+    await new Promise(r => setTimeout(r, 900));
+  }
+
+  const tables = allTables();
   const found = [];
   for (const t of tables) {
     // Expand rowspan/colspan, so grouped rows carry their group's value (the person).
@@ -125,23 +148,22 @@ function readReportTables() {
     if (headIdx < 0) { if (grid[0]) found.push({ heads: grid[0] }); continue; }
     found.push({ heads: grid[headIdx], rows: grid.slice(headIdx + 1).map(r => [...r].map(v => v ?? '')) });
   }
+
+  sc = scrollerOf(mainTable(tables)) || sc;
+  const scroll = sc ? { top: sc.scrollTop, height: sc.scrollHeight, view: sc.clientHeight } : null;
   // A snapshot of every table, so a wrong read can be diagnosed from the report in Action Desk.
   const cut = r => [...r].map(v => String(v ?? '').slice(0, 60));
   const snapshot = {
-    frame: location.href.slice(0, 160),
+    frame: location.href.slice(0, 160), scroll,
     tables: tables.map((t, i) => ({
       rows: t.rows.length, inShadow: t.getRootNode() !== document,
       cls: String(t.className || '').slice(0, 80),
       heads: cut(found[i]?.heads || []),
-      first: (found[i]?.rows || []).slice(0, 12).map(cut),
-      last: (found[i]?.rows || []).slice(-4).map(cut),
+      first: (found[i]?.rows || []).slice(0, 3).map(cut),
     })),
-    scroll: [...document.querySelectorAll('*')].filter(el => el.scrollHeight > el.clientHeight + 20 && /auto|scroll/.test(getComputedStyle(el).overflowY))
-      .slice(0, 5).map(el => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} ${el.clientHeight}/${el.scrollHeight}`),
-    text: (document.body?.innerText || '').match(/(total records|records|rows|rijen)[^\n]{0,40}/i)?.[0] || '',
   };
-  const hit = found.find(f => f.rows?.length);
-  return hit ? { ...hit, snapshot } : { tables: tables.length, heads: found.map(f => f.heads.join(' | ')).slice(0, 3), snapshot };
+  const hit = found.filter(f => f.rows?.length).sort((x, y) => y.rows.length - x.rows.length)[0];
+  return hit ? { ...hit, scroll, snapshot } : { tables: tables.length, heads: found.map(f => f.heads.join(' | ')).slice(0, 3), snapshot };
 }
 
 async function readReportPage(tabUrl) {
@@ -150,24 +172,53 @@ async function readReportPage(tabUrl) {
   const [open] = await chrome.tabs.query({ url: `${origin}/lightning/r/Report/${HOURS_REPORT_ID}/*` });
   const tab = open || await chrome.tabs.create({ url: `${origin}/lightning/r/Report/${HOURS_REPORT_ID}/view`, active: false });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  let seen = null, lastCount = -1;
+  const read = async scrollTo => {
+    const results = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: readReportTables, args: [scrollTo ?? null] }).catch(() => []);
+    const answers = results.map(r => r.result).filter(Boolean);
+    const hit = answers.filter(a => a.rows?.length).sort((x, y) => y.rows.length - x.rows.length)[0];
+    return { hit, frames: answers.map(a => a.snapshot) };
+  };
+
+  // Lightning only draws rows on the visible tab: bring the report to the front while
+  // reading, then go back to the tab you were on.
+  const [before] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+  if (before?.id !== tab.id) await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
   try {
-    for (const end = Date.now() + 60000; Date.now() < end;) {
-      await sleep(2500);
-      const results = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: readReportTables }).catch(() => []);
-      const answers = results.map(r => r.result).filter(Boolean);
-      const hit = answers.find(a => a.rows?.length);
-      if (hit) {
-        hit.frames = answers.map(a => a.snapshot);
-        if (hit.rows.length === lastCount) return hit; // two reads alike: the table has finished loading
-        lastCount = hit.rows.length;
-        continue;
-      }
-      seen = answers;
+    // 1. Wait for the table to appear.
+    let first = null, frames = [];
+    for (const end = Date.now() + 60000; !first && Date.now() < end;) {
+      await sleep(2000);
+      ({ hit: first, frames } = await read());
     }
-    const heads = (seen || []).flatMap(a => a.heads || []).filter(Boolean);
-    throw new Error(`Couldn't read the hours report page${heads.length ? ` (tables found: ${heads.join(' / ')})` : ' (no table found)'}.`);
+    if (!first) {
+      const heads = frames.flatMap(f => (f?.tables || []).map(t => t.heads.join(' | '))).filter(Boolean);
+      throw new Error(`Couldn't read the hours report page${heads.length ? ` (tables found: ${heads.join(' / ')})` : ' (no table found)'}.`);
+    }
+
+    // 2. Scroll from top to bottom, collecting every row once (by its ID column).
+    const heads  = first.heads;
+    const idCol  = heads.findIndex(h => /split id|timecard split/i.test(h));
+    const keyOf  = r => idCol >= 0 && r[idCol] ? r[idCol] : r.join('|');
+    const rows   = new Map();
+    const add    = hit => hit?.rows?.forEach(r => { if (r.some(c => c)) rows.set(keyOf(r), r); });
+    let pos = 0, steps = 0, last = first, prevTop = -1;
+    if (first.scroll && first.scroll.height > first.scroll.view + 20) {
+      // Ends at the bottom, when scrolling no longer moves, or after 3 minutes / 400 steps.
+      for (const end = Date.now() + 180000; ;) {
+        const { hit } = await read(pos);
+        if (hit) { add(hit); last = hit; }
+        const sc = hit?.scroll || last.scroll;
+        if (!sc || sc.top + sc.view >= sc.height - 2 || sc.top <= prevTop || ++steps > 400 || Date.now() > end) break;
+        prevTop = sc.top;
+        pos = sc.top + Math.max(100, Math.floor(sc.view * 0.7));
+      }
+      await read(0); // leave the report scrolled to the top again
+    } else {
+      add(first);
+    }
+    return { heads, rows: [...rows.values()], frames: [...frames, { scrolled: steps, rowsCollected: rows.size, idColumn: idCol >= 0 ? heads[idCol] : 'whole row' }] };
   } finally {
+    if (before && before.id !== tab.id) chrome.tabs.update(before.id, { active: true }).catch(() => {});
     if (!open) chrome.tabs.remove(tab.id).catch(() => {});
   }
 }
@@ -243,7 +294,9 @@ function hoursFromRows(head, data) {
     hours.set(k, e);
     if (dateCol >= 0 && r[dateCol]) dates.push(r[dateCol].trim());
   }
-  const uniq = [...new Set(dates)];
+  // dd-mm-yyyy (or dd/mm/yyyy, dd.mm.yyyy) sorted by date, so the period runs first to last day.
+  const dayNum = t => { const m = String(t).match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/); return m ? +m[3] * 10000 + +m[2] * 100 + +m[1] : 0; };
+  const uniq = [...new Set(dates)].sort((x, y) => dayNum(x) - dayNum(y));
   const period = !uniq.length ? `report of ${new Date().toISOString().slice(0, 10)}`
                : uniq.length === 1 ? `week of ${uniq[0]}` : `${uniq[0]} – ${uniq[uniq.length - 1]}`;
   const diag = `read "${label[nameCol]}" and "${totalCol >= 0 ? label[totalCol] : 'day columns'}", `
@@ -288,7 +341,7 @@ async function hoursCheck(tabUrl) {
 // Must match BUILD in content.js. Chrome reads content.js from disk on every run but keeps
 // this service worker until the extension is reloaded, so after copying new files without
 // clicking reload the two can differ.
-const BUILD = '1.4.4';
+const BUILD = '1.4.5';
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
