@@ -16,11 +16,32 @@ Klik **+ Nieuwe zoekopdracht**. Per zoekopdracht kun je instellen:
 - **Conditie** (nieuw, zo goed als nieuw, gebruikt, …). De opties komen uit de gekozen categorie zelf, want die verschillen per categorie (bij auto's is "Gebruikt" een andere waarde dan bij fietsen).
 - **Uitsluiten**: woorden in de titel die je niet wilt zien (bijv. `gezocht, defect, onderdelen`).
 - **Betaalde promoties altijd overslaan**: standaard uit. Een dagtopper wordt alleen gemeld als de advertentie zelf echt nieuw is; zet dit aan als je ook nieuwe advertenties met een dagtopper niet wilt zien.
+- **Laat Claude beoordelen**: beschrijf in je eigen woorden wat je zoekt (zie hieronder).
 - **Actief**: tijdelijk pauzeren zonder te verwijderen.
 
 Met **Testen** zie je meteen wat de zoekopdracht nu oplevert: hoeveel betaalde promoties en winkeladvertenties er bovenaan staan, en de nieuwste gewone advertenties met hun datum.
 
 Een zoekopdracht met alleen een categorie (zonder zoekterm) werkt ook.
+
+## Claude laten beoordelen
+Krijg je te veel resultaten, beschrijf dan bij een zoekopdracht in gewone taal wat je zoekt, bijvoorbeeld:
+
+> Een Bambu Lab A1 of A1 mini, liefst met AMS lite, werkend en in goede staat. Geen losse onderdelen of filament, geen gezocht-advertenties.
+
+Claude bekijkt dan elke nieuwe advertentie (titel, prijs, omschrijving, plaats) en laat alleen door wat erbij past. In de pop-up staat bij elke advertentie in één zin waarom hij past, en onder **Afgekeurd door Claude** zie je wat er is tegengehouden en waarom. Zo kun je je omschrijving bijstellen. Met **Testen** in de editor zie je meteen hoe Claude de tien nieuwste advertenties beoordeelt.
+
+Tips:
+- Noem wat je **niet** wilt ("geen onderdelen", "geen ruilen", "geen bieden"), dat werkt het best.
+- Zegt een advertentie iets niet (bijv. de staat), dan laat Claude hem standaard door. Wil je dat niet, schrijf dan "alleen als de staat vermeld is" of "wees streng".
+- De zoekterm en filters blijven het eerste zeef; Claude beoordeelt alleen wat daarna overblijft.
+
+**Instellen** (Instellingen → Claude):
+1. Maak een API-sleutel aan op [platform.claude.com](https://platform.claude.com/) (je hebt daar tegoed nodig) en plak hem in **API-sleutel**. Met **Testen** controleer je of hij werkt.
+2. Kies een **model**. Standaard is Claude Opus 5.5 (beste oordeel, ongeveer $0,20 per 100 beoordeelde advertenties). Claude Sonnet 5.5 kost ongeveer de helft, Claude Haiku 5.5 is zeer goedkoop (ongeveer $0,01 per 100) maar minder scherp bij twijfelgevallen. Wat het vandaag gekost heeft, staat onder het model.
+
+De sleutel blijft alleen in deze browser en gaat niet mee in de back-up. Advertentiegegevens worden voor de beoordeling naar Claude (Anthropic) gestuurd.
+
+Lukt de beoordeling even niet (geen sleutel, tegoed op, geen verbinding), dan wachten de nieuwe advertenties en worden ze de volgende ronde alsnog beoordeeld; je ziet dan een oranje **!** en de melding bij de zoekopdracht. Haal je de omschrijving weg, dan komen wachtende advertenties gewoon door.
 
 ## Wat telt als nieuw?
 Alleen advertenties die **na de vorige controle geplaatst** zijn. Bij het opslaan onthoudt de Speurder wat er nu al staat; daarna meldt hij alleen nieuw geplaatste advertenties. Pas je de filters aan, dan begint hij opnieuw.
@@ -48,3 +69,13 @@ Op de instellingenpagina zie je per zoekopdracht wat de laatste controle heeft o
 Marktplaats heeft **geen openbare API** voor zoeken. De website haalt zijn zoekresultaten zelf op bij `https://www.marktplaats.nl/lrp/api/search` (JSON, geen sleutel nodig). Deze extensie gebruikt hetzelfde adres, gesorteerd op *nieuwste eerst* en met het filter *aangeboden sinds*. Dezelfde aanpak gebruikt de open-source Python-bibliotheek [marktplaats-py](https://github.com/jensjeflensje/marktplaats-py), waar ook de categorielijst (`categories.js`) vandaan komt.
 
 Omdat dit adres niet officieel is, kan Marktplaats het zonder aankondiging wijzigen. Gaat er iets mis, dan zie je de fout in de pop-up en op de instellingenpagina.
+
+Voor Claude gebruikt de extensie de officiële Anthropic-SDK (`@anthropic-ai/sdk`), als één gebundeld bestand in `vendor/anthropic-sdk.mjs`, omdat een extensie zonder bouwstap geen npm-pakketten kan laden. Bijwerken naar een nieuwere SDK-versie:
+
+```bash
+npm install @anthropic-ai/sdk@<versie> esbuild
+echo "export { default } from '@anthropic-ai/sdk';" > entry.mjs
+npx esbuild entry.mjs --bundle --format=esm --platform=browser --target=chrome120 --minify --legal-comments=inline --outfile=vendor/anthropic-sdk.mjs
+```
+
+Pas daarna het versienummer in de eerste regel van dat bestand aan.

@@ -9,17 +9,24 @@
 //               last (successful) check, last error, counts for the status line
 //   finds     – new listings, newest first, each with the searches that found it;
 //               only written here
+//   rejected  – listings Claude turned down, with its reason, newest first; only written here
+//   aiUsage   – today's Claude usage: listings judged, tokens, estimated cost
+//   claudeKey – the user's Claude API key (kept out of `settings`, so not in back-ups)
 //   readUntil – listings found after this time count as unread; only written by the popup
 
 import {
   DEFAULT_SETTINGS, ID_MARGIN, fetchListings, fetchSiteMaxId, fetchConditions, matchConditions, savedConditions,
   rejectReason, gateDay, startOfDay, idNumber, searchKey, formatPrice, formatDistance, watchLabel,
 } from './lib.js';
+import { DEFAULT_MODEL, triage } from './claude.js';
 
 const ALARM = 'check';
 const SEEN_MAX = 20000;  // safety cap; numbered ids are trimmed by number (see below)
 const OTHER_IDS_MAX = 500; // ids without a number (shop ads), most recent first
 const FINDS_MAX = 300;   // listings kept in the popup
+const REJECTED_MAX = 200; // listings Claude turned down, kept to show why
+const PENDING_MAX = 100; // per search: new listings waiting for Claude's verdict
+const MAX_TRIES = 3;     // requests without a verdict before a listing is given up on
 const ICON = 'icons/icon128.png';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -59,9 +66,58 @@ function checkAll() {
   return running;
 }
 
+// Claude's triage for one search. New listings wait in st.pending until Claude has judged
+// them, so a failed request (no key, rate limit, offline) is retried next round instead of
+// letting everything through. Returns the listings that pass, each with Claude's reason.
+async function triageHits(w, st, hits, ctx) {
+  const pending = st.pending || [];
+  for (const l of hits) if (!pending.some(p => p.id === l.id)) pending.push({ ...l, tries: 0 });
+  st.pending = pending.slice(-PENDING_MAX);
+  if (!st.pending.length) return [];
+
+  let result;
+  try {
+    result = await triage(st.pending, w.ai.trim(), { apiKey: ctx.apiKey, model: ctx.settings.aiModel || DEFAULT_MODEL });
+  } catch (e) {
+    st.triageError = e.message;
+    return [];
+  }
+  st.triageError = null;
+  const { verdicts, usage } = result;
+  const day = startOfDay(Date.now());
+  if (ctx.aiUsage.day !== day) Object.assign(ctx.aiUsage, { day, listings: 0, input: 0, output: 0, cost: 0 });
+  ctx.aiUsage.listings += verdicts.size;
+  ctx.aiUsage.input += usage.input;
+  ctx.aiUsage.output += usage.output;
+  ctx.aiUsage.cost += usage.cost;
+
+  const label = watchLabel(w);
+  const turnDown = (l, reason) => ctx.rejected.unshift({
+    id: l.id, title: l.title, priceCents: l.priceCents, priceType: l.priceType, city: l.city, date: l.date,
+    image: l.image, url: l.url, watchIds: [w.id], watchNames: [label], reason, judgedAt: Date.now(),
+  });
+  const passed = [];
+  const waiting = [];
+  for (const { tries, ...l } of st.pending) {
+    const v = verdicts.get(l.id);
+    if (v?.match) passed.push({ ...l, aiReason: v.reason });
+    else if (v) turnDown(l, v.reason);
+    else if (tries + 1 < MAX_TRIES) waiting.push({ ...l, tries: tries + 1 });
+    else turnDown(l, 'Claude gaf geen oordeel');
+  }
+  st.pending = waiting;
+  ctx.rejected.splice(REJECTED_MAX);
+  if (st.aiToday?.day !== day) st.aiToday = { day, judged: 0, passed: 0 };
+  st.aiToday.judged += verdicts.size;
+  st.aiToday.passed += passed.length;
+  return passed;
+}
+
 async function doCheckAll() {
-  const { watches = [], state = {}, finds = [] } = await chrome.storage.local.get(['watches', 'state', 'finds']);
+  const { watches = [], state = {}, finds = [], rejected = [], aiUsage = {}, claudeKey = '' } =
+    await chrome.storage.local.get(['watches', 'state', 'finds', 'rejected', 'aiUsage', 'claudeKey']);
   const settings = await getSettings();
+  const ctx = { apiKey: claudeKey, settings, rejected, aiUsage };
 
   for (const id of Object.keys(state)) {
     if (!watches.some(w => w.id === id)) delete state[id];
@@ -132,10 +188,21 @@ async function doCheckAll() {
         stats, lastOkAt: now, lastError: null,
       });
 
+      // With a description, Claude decides what gets through. Listings still waiting when
+      // the description is removed are reported as they are.
+      let report = hits;
+      if (w.ai?.trim()) {
+        report = await triageHits(w, st, hits, ctx);
+      } else if (st.pending?.length) {
+        report = [...st.pending.map(({ tries, ...l }) => l), ...hits];
+        st.pending = [];
+        st.triageError = null;
+      }
+
       // A listing found by several searches is kept once, with all their names.
       const label = watchLabel(w);
       const fresh = [];
-      for (const l of hits) {
+      for (const l of report) {
         const known = finds.find(f => f.id === l.id);
         if (known) {
           known.watchIds ??= [known.watchId];
@@ -148,7 +215,7 @@ async function doCheckAll() {
       st.lastNew = fresh.length;
       const today = startOfDay(now);
       if (st.today?.day !== today) st.today = { day: today, n: 0 };
-      st.today.n += hits.length;
+      st.today.n += report.length;
       if (fresh.length) {
         finds.unshift(...fresh);
         finds.splice(FINDS_MAX);
@@ -159,7 +226,7 @@ async function doCheckAll() {
     }
 
     state[w.id] = st;
-    await chrome.storage.local.set({ state, finds });
+    await chrome.storage.local.set({ state, finds, rejected, aiUsage });
   }
 
   await updateBadge();
@@ -190,7 +257,8 @@ function notify(w, hits, settings) {
     createNotification(`open:${h.url}`, {
       iconUrl: h.image || ICON,
       title: h.title,
-      message: [formatPrice(h), h.city, formatDistance(h.distanceM)].filter(Boolean).join(' · '),
+      message: [formatPrice(h), h.city, formatDistance(h.distanceM)].filter(Boolean).join(' · ')
+        + (h.aiReason ? `\nClaude: ${h.aiReason}` : ''),
       contextMessage: `Nieuw voor: ${label}`,
     });
   }
@@ -200,7 +268,7 @@ async function updateBadge() {
   const { finds = [], readUntil = 0, watches = [], state = {} } =
     await chrome.storage.local.get(['finds', 'readUntil', 'watches', 'state']);
   const unread = finds.filter(f => f.foundAt > readUntil).length;
-  const failing = watches.some(w => w.active && state[w.id]?.lastError);
+  const failing = watches.some(w => w.active && (state[w.id]?.lastError || state[w.id]?.triageError));
   if (unread) {
     await chrome.action.setBadgeBackgroundColor({ color: '#0e7490' });
     await chrome.action.setBadgeText({ text: unread > 99 ? '99+' : String(unread) });
@@ -268,7 +336,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg?.type === 'clearFinds') {
-    locked(() => chrome.storage.local.set({ finds: [] }))
+    locked(() => chrome.storage.local.set({ finds: [], rejected: [] }))
       .then(updateBadge)
       .then(() => sendResponse({ ok: true }));
     return true;

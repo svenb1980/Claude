@@ -12,8 +12,8 @@ const findWatchIds = f => f.watchIds || [f.watchId];
 const findWatchNames = f => f.watchNames || [f.watchName];
 
 async function render() {
-  const { watches = [], state = {}, finds = [], settings = {} } =
-    await chrome.storage.local.get(['watches', 'state', 'finds', 'settings']);
+  const { watches = [], state = {}, finds = [], rejected = [], settings = {} } =
+    await chrome.storage.local.get(['watches', 'state', 'finds', 'rejected', 'settings']);
   const active = watches.filter(w => w.active);
 
   // Status line: last check and any failing searches.
@@ -23,7 +23,7 @@ async function render() {
     const last = Math.max(0, ...active.map(w => state[w.id]?.lastCheck || 0));
     status.append(`${active.length} actieve zoekopdracht${active.length === 1 ? '' : 'en'} · laatst gecontroleerd ${timeAgo(last)} · elke ${settings.intervalMin || 5} min`);
     for (const w of active) {
-      const err = state[w.id]?.lastError;
+      const err = state[w.id]?.lastError || state[w.id]?.triageError;
       if (err) status.append(el('span', { className: 'err', textContent: `⚠ ${watchLabel(w)}: ${err}` }));
     }
   }
@@ -76,10 +76,20 @@ async function render() {
           findWatchNames(f).join(', '),
           placedLabel(f) ? `geplaatst ${placedLabel(f)}` : '',
           `gevonden ${timeAgo(f.foundAt)}`,
-        ].filter(Boolean).join(' · ') }))));
+        ].filter(Boolean).join(' · ') }),
+        f.aiReason ? el('div', { className: 'why', textContent: `Claude: ${f.aiReason}` }) : null)));
   }
 
-  $('clear').hidden = !finds.length;
+  // What Claude turned down, with its reason, to check that the description works.
+  const turnedDown = rejected.filter(r => filter === 'all' || r.watchIds.includes(filter));
+  $('rejected').hidden = !turnedDown.length;
+  $('rejected').querySelector('summary').textContent = `Afgekeurd door Claude (${turnedDown.length})`;
+  $('rejectedList').replaceChildren(...turnedDown.map(r => el('div', { className: 'row' },
+    el('a', { href: r.url, target: '_blank', rel: 'noopener', textContent: r.title }),
+    el('span', { className: 'meta', textContent: `  ${formatPrice(r)}` }),
+    el('div', { className: 'meta', textContent: `✗ ${r.reason} · ${r.watchNames.join(', ')} · ${timeAgo(r.judgedAt)}` }))));
+
+  $('clear').hidden = !finds.length && !rejected.length;
   $('openTab').hidden = isTab;
 }
 
@@ -100,7 +110,7 @@ $('clear').onclick = () => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (changes.finds || changes.state || changes.watches || changes.settings) render();
+  if (changes.finds || changes.rejected || changes.state || changes.watches || changes.settings) render();
   if (changes.finds) chrome.storage.local.set({ readUntil: Date.now() }); // seen while open
 });
 

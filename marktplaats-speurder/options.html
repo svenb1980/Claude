@@ -42,6 +42,12 @@
     #preview > div { margin-bottom: 4px; }
     #preview ol { margin: 6px 0 0; padding-left: 20px; }
     #preview li { margin-bottom: 3px; }
+    #preview li.no { color: var(--muted); }
+    #preview .why { color: var(--muted); }
+
+    textarea { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%; resize: vertical; }
+    textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+    .ai { background: var(--accent-soft); border-radius: var(--radius); padding: 10px 12px; }
 
     #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
     #toast.show { opacity: 1; }
@@ -95,6 +101,21 @@
   </section>
 
   <section>
+    <h2>Claude</h2>
+    <p class="muted small" style="margin-top:0">Geef een zoekopdracht een omschrijving in je eigen woorden, dan beoordeelt Claude elke nieuwe advertentie en laat alleen door wat erbij past. Daarvoor is een eigen API-sleutel nodig, aan te maken op <a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a>; het gebruik wordt per advertentie afgerekend.</p>
+    <div class="grid">
+      <label class="f">API-sleutel
+        <span class="row"><input id="claudeKey" type="password" autocomplete="off" placeholder="sk-ant-…"> <button id="testKey" type="button">Testen</button></span>
+        <span class="hint" id="keyStatus">Blijft alleen in deze browser en gaat niet mee in de back-up.</span>
+      </label>
+      <label class="f">Model
+        <select id="aiModel"></select>
+        <span class="hint"><span id="aiEstimate"></span> <span id="aiUsage"></span></span>
+      </label>
+    </div>
+  </section>
+
+  <section>
     <h2>Back-up</h2>
     <p class="muted small" style="margin-top:0">Bewaar je zoekopdrachten als bestand, of zet ze over naar een andere computer.</p>
     <div class="row">
@@ -137,6 +158,9 @@
         <input id="exclude">
       </label>
       <label class="c full"><input type="checkbox" id="inDescription"> Ook zoeken in de beschrijving</label>
+      <label class="f full ai">Laat Claude beoordelen <span class="hint">Optioneel. Beschrijf in je eigen woorden wat je zoekt; Claude laat alleen advertenties door die daarbij passen.</span>
+        <textarea id="ai" rows="3" placeholder="Bijv.: Een Bambu Lab A1 of A1 mini, liefst met AMS lite, werkend en in goede staat. Geen losse onderdelen of filament, geen gezocht-advertenties."></textarea>
+      </label>
       <label class="c full"><input type="checkbox" id="skipAds"> Betaalde promoties (dagtoppers) altijd overslaan, ook als ze nieuw geplaatst zijn</label>
       <label class="c full"><input type="checkbox" id="active"> Actief</label>
     </div>

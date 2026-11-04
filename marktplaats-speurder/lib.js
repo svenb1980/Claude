@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS = {
   intervalMin: 5,       // minutes between checks
   notify: true,         // desktop notifications
   maxNotify: 3,         // per search per check; more becomes one summary notification
+  aiModel: 'claude-opus-5-5', // model for Claude's triage (see MODELS in claude.js)
 };
 
 // attributesById values for the condition filter in most categories. Some categories
@@ -59,6 +60,7 @@ export function newWatch() {
     inDescription: true,
     exclude: '',
     skipAds: false,
+    ai: '',          // what the user is looking for, in their own words; Claude judges against it
     active: true,
   };
 }

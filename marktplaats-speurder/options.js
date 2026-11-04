@@ -4,6 +4,7 @@ import {
   fetchConditions, matchConditions, savedConditions, passesFilters, formatPrice, formatDistance, normalizePostcode,
   websiteUrl, searchKey, timeAgo, watchLabel, el, startOfDay,
 } from './lib.js';
+import { MODELS, DEFAULT_MODEL, triage, testKey } from './claude.js';
 
 const $ = id => document.getElementById(id);
 let editingId = null; // id of the search open in the editor, null for a new one
@@ -31,6 +32,7 @@ function summary(w) {
   if (w.conditions.length) parts.push(savedConditions(w).map(c => c.label).join('/'));
   if (w.exclude.trim()) parts.push(`zonder: ${w.exclude.trim()}`);
   if (!w.inDescription) parts.push('alleen titel');
+  if (w.ai?.trim()) parts.push(`Claude: “${w.ai.length > 60 ? `${w.ai.slice(0, 57).trim()}…` : w.ai.trim()}”`);
   return parts.join(' · ');
 }
 
@@ -41,6 +43,10 @@ function statusText(w, st) {
   if (!st.baselineAt) return { text: 'Wacht op eerste controle…' };
   const newToday = st.today?.day === startOfDay(Date.now()) ? st.today.n : 0;
   const text = `Gecontroleerd ${timeAgo(st.lastCheck)} · ${newToday} nieuw vandaag`;
+  if (st.triageError) {
+    const waiting = st.pending?.length ? ` (${count(st.pending.length, 'advertentie wacht', 'advertenties wachten')} op Claude)` : '';
+    return { text: `${text} · ⚠ ${st.triageError}${waiting}`, warn: true };
+  }
   if (st.empty) return { text: `${text} · ⚠ Deze zoekopdracht vindt op dit moment niets op Marktplaats; controleer de filters met Testen.`, warn: true };
   return { text };
 }
@@ -53,6 +59,8 @@ function statsText(st) {
   if (s.promoted) parts.push(count(s.promoted, 'betaalde promotie', 'betaalde promoties'));
   if (s.shop) parts.push(count(s.shop, 'winkeladvertentie', 'winkeladvertenties'));
   let text = parts.length ? `Laatste controle: ${s.rows} bekeken, waarvan ${parts.join(', ')} niet als nieuw geteld.` : '';
+  const ai = st.aiToday;
+  if (ai?.day === startOfDay(Date.now()) && ai.judged) text += ` Claude liet vandaag ${ai.passed} van de ${ai.judged} nieuwe advertenties door.`;
   if (st.truncated) text += ' Zeer brede zoekopdracht: niet alles kon worden nagelopen; maak hem specifieker.';
   return text.trim();
 }
@@ -204,6 +212,7 @@ function openEditor(w) {
   w = w ? structuredClone(w) : newWatch();
   $('editorTitle').textContent = editingId ? 'Zoekopdracht bewerken' : 'Nieuwe zoekopdracht';
   for (const f of ['name', 'query', 'priceMin', 'priceMax', 'postcode', 'exclude']) $(f).value = w[f];
+  $('ai').value = w.ai || '';
   $('l1').value = w.l1;
   fillSubcategories(w.l1, w.l2);
   $('distanceKm').value = w.distanceKm;
@@ -234,6 +243,7 @@ function readEditor() {
     conditionLabels: checkedConditions().map(c => c.label),
     inDescription: $('inDescription').checked,
     exclude: $('exclude').value.trim(),
+    ai: $('ai').value.trim(),
     skipAds: $('skipAds').checked,
     active: $('active').checked,
   };
@@ -273,13 +283,34 @@ $('test').onclick = async () => {
         (w.skipAds ? 'Die tellen nooit als nieuw.' : 'Promoties tellen alleen als ze echt nieuw geplaatst zijn, winkeladvertenties nooit.') }));
     }
     if (hits.length) {
-      lines.push(el('div', { textContent: 'Nieuwste gewone advertenties (na jouw filters):' }));
+      // With a description, let Claude judge the newest ones, as it will for new listings.
+      const sample = hits.slice(0, w.ai ? 10 : 5);
+      let verdicts = null;
+      let aiProblem = '';
+      if (w.ai) {
+        box.replaceChildren(...lines, el('div', { className: 'muted', textContent: 'Claude beoordeelt de nieuwste advertenties…' }));
+        const { claudeKey = '', settings = {} } = await chrome.storage.local.get(['claudeKey', 'settings']);
+        try {
+          ({ verdicts } = await triage(sample, w.ai, { apiKey: claudeKey, model: settings.aiModel || DEFAULT_MODEL }));
+        } catch (e) {
+          aiProblem = e.message;
+        }
+        if (request !== previewRequest) return;
+      }
+      const passed = verdicts ? sample.filter(l => verdicts.get(l.id)?.match).length : 0;
+      lines.push(el('div', { textContent: verdicts
+        ? `Claude laat ${passed} van de ${sample.length} nieuwste gewone advertenties door:`
+        : 'Nieuwste gewone advertenties (na jouw filters):' }));
+      if (aiProblem) lines.push(el('div', { className: 'warn', textContent: aiProblem }));
       const list = el('ol');
-      for (const l of hits.slice(0, 5)) {
+      for (const l of sample) {
+        const v = verdicts?.get(l.id);
         const where = [l.city, formatDistance(l.distanceM)].filter(Boolean).join(', ');
-        list.append(el('li', {},
+        list.append(el('li', { className: v && !v.match ? 'no' : '' },
+          v ? (v.match ? '✓ ' : '✗ ') : '',
           el('a', { href: l.url, target: '_blank', rel: 'noopener', textContent: l.title }),
-          ` – ${formatPrice(l)}${where ? ` (${where})` : ''}${l.date ? ` · ${l.date.toLowerCase()}` : ''}`));
+          ` – ${formatPrice(l)}${where ? ` (${where})` : ''}${l.date ? ` · ${l.date.toLowerCase()}` : ''}`,
+          v ? el('span', { className: 'why', textContent: ` — ${v.reason}` }) : null));
       }
       lines.push(list);
     } else if (truncated) {
@@ -321,6 +352,7 @@ async function loadSettings() {
   $('intervalMin').value = String(s.intervalMin);
   $('maxNotify').value = String(s.maxNotify);
   $('notify').checked = s.notify;
+  $('aiModel').value = s.aiModel;
 }
 
 async function saveSettings() {
@@ -331,12 +363,60 @@ async function saveSettings() {
       intervalMin: Number($('intervalMin').value),
       maxNotify: Number($('maxNotify').value),
       notify: $('notify').checked,
+      aiModel: $('aiModel').value,
     },
   });
   toast('Instellingen opgeslagen.');
 }
 
 for (const id of ['intervalMin', 'maxNotify', 'notify']) $(id).onchange = saveSettings;
+$('aiModel').onchange = () => { showEstimate(); saveSettings(); };
+
+// ── Claude ───────────────────────────────────────────────────────────────────
+
+const dollars = n => (n > 0 && n < 0.005 ? 'minder dan $0,01' : `$${n.toFixed(2).replace('.', ',')}`);
+
+for (const m of MODELS) $('aiModel').append(el('option', { value: m.id, textContent: m.label }));
+
+// Rough cost per 100 listings: ~200 input and ~60 output tokens each (judged in batches).
+function showEstimate() {
+  const m = MODELS.find(x => x.id === $('aiModel').value) || MODELS[0];
+  $('aiEstimate').textContent = `Ongeveer ${dollars(100 * (200 * m.input + 60 * m.output) / 1e6)} per 100 beoordeelde advertenties.`;
+}
+
+function showUsage(u) {
+  $('aiUsage').textContent = u?.day === startOfDay(Date.now()) && u.listings
+    ? `Vandaag ${count(u.listings, 'advertentie', 'advertenties')} beoordeeld, geschat ${dollars(u.cost)}.`
+    : 'Vandaag nog niets beoordeeld.';
+}
+
+async function loadClaude() {
+  const { claudeKey = '', aiUsage } = await chrome.storage.local.get(['claudeKey', 'aiUsage']);
+  $('claudeKey').value = claudeKey;
+  showEstimate();
+  showUsage(aiUsage);
+}
+
+$('claudeKey').onchange = async () => {
+  await chrome.storage.local.set({ claudeKey: $('claudeKey').value.trim() });
+  $('keyStatus').className = 'hint';
+  $('keyStatus').textContent = 'Opgeslagen. Blijft alleen in deze browser en gaat niet mee in de back-up.';
+  toast('API-sleutel opgeslagen.');
+  checkNow(); // listings waiting for a key are judged now
+};
+
+$('testKey').onclick = async () => {
+  const status = $('keyStatus');
+  status.className = 'hint';
+  status.textContent = 'Bezig met testen…';
+  try {
+    await testKey($('claudeKey').value.trim(), $('aiModel').value);
+    status.textContent = `✓ De sleutel werkt met ${MODELS.find(m => m.id === $('aiModel').value).label.split(' – ')[0]}.`;
+  } catch (e) {
+    status.className = 'hint warn';
+    status.textContent = e.message;
+  }
+};
 
 // ── Back-up ──────────────────────────────────────────────────────────────────
 
@@ -374,9 +454,11 @@ $('importFile').onchange = async () => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.watches || changes.state)) renderWatches();
+  if (area === 'local' && changes.aiUsage) showUsage(changes.aiUsage.newValue);
 });
 
 setupEditorFields();
 await loadSettings();
+await loadClaude();
 await renderWatches();
 setInterval(renderWatches, 30000); // keep the "x min ago" texts fresh
