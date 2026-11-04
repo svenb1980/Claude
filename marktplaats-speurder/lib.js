@@ -18,6 +18,8 @@
 //   match the search; with small limits they even come back beyond `limit`.
 
 export const API_URL = 'https://www.marktplaats.nl/lrp/api/search';
+// The Marktplaats Triage page on claude.ai (source: marktplaats-triage.html in the repo).
+export const TRIAGE_URL = 'https://claude.ai/artifact/PFrhocoSYukf1XQ4atgc6S';
 export const SITE_URL = 'https://www.marktplaats.nl';
 export const PAGE_SIZE = 100;      // the API maximum
 export const MAX_PAGES = 5;        // per check, to get past the dagtoppers in broad searches
@@ -30,7 +32,8 @@ export const DEFAULT_SETTINGS = {
   intervalMin: 5,       // minutes between checks
   notify: true,         // desktop notifications
   maxNotify: 3,         // per search per check; more becomes one summary notification
-  aiModel: 'claude-opus-5-5', // model for Claude's triage (see MODELS in claude.js)
+  aiProvider: 'claudeai',     // Claude's triage: 'claudeai' (triage page, own subscription) or 'api'
+  aiModel: 'claude-opus-5-5', // model for the 'api' route (see MODELS in claude.js)
 };
 
 // attributesById values for the condition filter in most categories. Some categories

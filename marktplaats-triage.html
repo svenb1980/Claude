@@ -1,0 +1,309 @@
+<title>Marktplaats Triage</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one narrow working column — status strip, today's tally, then the log of judged batches. */
+  :root {
+    --bg: #f3f6f7;
+    --panel: #ffffff;
+    --fg: #17242b;
+    --muted: #5b6b73;
+    --line: #dbe3e6;
+    --accent: #0e7490;
+    --accent-soft: #e1f2f6;
+    --ok: #1f7a46;
+    --ok-soft: #e3f3e9;
+    --no: #9a3b1d;
+    --no-soft: #f8e9e3;
+    --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11181c; --panel: #182228; --fg: #e3eaed; --muted: #95a6ae; --line: #2a3840;
+      --accent: #4cc3dc; --accent-soft: #163742; --ok: #6fd39a; --ok-soft: #173326; --no: #f0a184; --no-soft: #3a231b;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11181c; --panel: #182228; --fg: #e3eaed; --muted: #95a6ae; --line: #2a3840;
+    --accent: #4cc3dc; --accent-soft: #163742; --ok: #6fd39a; --ok-soft: #173326; --no: #f0a184; --no-soft: #3a231b;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-body); }
+  main {
+    max-width: 760px; margin: 0 auto; display: grid; gap: 18px;
+    padding-block: 28px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  h1 { font-size: 24px; font-weight: 600; margin: 0; text-wrap: balance; }
+  h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  p { margin: 0; max-width: 65ch; }
+  .lede { color: var(--muted); margin-top: 6px; }
+
+  .strip { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 12px; }
+  .lights { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .light { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); flex: none; }
+  .light[data-state="on"] .dot { background: var(--ok); }
+  .light[data-state="off"] .dot { background: var(--no); }
+  .light[data-state="wait"] .dot { background: var(--accent); }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .note { font-size: 13px; color: var(--muted); }
+
+  button {
+    font: 600 14px var(--font-body); border-radius: 8px; padding: 8px 16px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--panel);
+  }
+  button.quiet { background: transparent; color: var(--accent); }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+  label.toggle { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+  input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  .tally { display: flex; flex-wrap: wrap; gap: 6px 22px; font-variant-numeric: tabular-nums; }
+  .tally b { font-size: 22px; font-weight: 600; margin-right: 4px; }
+
+  #log { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .batch { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  .batch-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; color: var(--muted); }
+  .batch-head .wish { color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }
+  .batch.failed { border-color: var(--no); }
+  .verdicts { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+  .verdict { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; font-size: 14px; min-width: 0; }
+  .mark { font: 500 12px var(--font-mono); border-radius: 4px; padding: 1px 6px; align-self: start; margin-top: 2px; }
+  .yes .mark { background: var(--ok-soft); color: var(--ok); }
+  .no .mark { background: var(--no-soft); color: var(--no); }
+  .verdict .title { overflow-wrap: anywhere; }
+  .verdict .why { grid-column: 2; color: var(--muted); font-size: 13px; }
+  .no .title { color: var(--muted); }
+  .id { font: 12px var(--font-mono); color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; padding: 14px 0; }
+  .error { color: var(--no); font-size: 14px; margin-top: 6px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .batch { animation: in .25s ease-out; }
+    @keyframes in { from { transform: translateY(-4px); opacity: .4; } to { transform: none; opacity: 1; } }
+  }
+</style>
+
+<main>
+  <header>
+    <h1>Marktplaats Triage</h1>
+    <p class="lede">Laat dit tabblad openstaan. De Marktplaats Speurder stuurt nieuwe advertenties hierheen, Claude beoordeelt ze tegen jouw omschrijving en stuurt alleen terug wat erbij past. Dit gaat via je eigen Claude-abonnement: geen API-sleutel, geen extra kosten.</p>
+  </header>
+
+  <section class="strip" aria-label="Status">
+    <div class="lights">
+      <div class="light" id="extLight" data-state="wait"><span class="dot"></span><span id="extText">Extensie: verbinding zoeken…</span></div>
+      <div class="light" id="claudeLight" data-state="wait"><span class="dot"></span><span id="claudeText">Claude: controleren…</span></div>
+    </div>
+    <div class="controls">
+      <button id="start" type="button" hidden>Starten</button>
+      <button id="manage" type="button" class="quiet" hidden>Rechten beheren</button>
+      <label class="toggle"><input type="checkbox" id="pause"> Pauzeren</label>
+    </div>
+    <p class="note" id="note">Elke beoordeling telt mee voor het gebruik van je Claude-abonnement, net als een chatbericht. Advertenties worden per zoekopdracht in één keer beoordeeld.</p>
+  </section>
+
+  <section aria-label="Vandaag">
+    <h2>Vandaag</h2>
+    <div class="tally"><span><b id="judged">0</b>beoordeeld</span><span><b id="passed">0</b>doorgelaten</span><span><b id="turned">0</b>afgekeurd</span></div>
+  </section>
+
+  <section aria-label="Laatste beoordelingen">
+    <h2>Laatste beoordelingen</h2>
+    <ol id="log"></ol>
+    <p class="empty" id="empty">Nog niets beoordeeld. Zodra de Speurder nieuwe advertenties vindt bij een zoekopdracht met een omschrijving, verschijnen ze hier met Claude's oordeel.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  // Bridge protocol with the Marktplaats Speurder extension (its bridge.js runs in this frame):
+  //   page   → { source: 'mp-triage', type: 'hello', ready, paused } on load, every 30 s, on change
+  //   bridge → { source: 'mp-speurder', type: 'welcome' }
+  //   bridge → { source: 'mp-speurder', type: 'job', id, prompt, items: [{ id, title }] }
+  //   page   → { source: 'mp-triage', type: 'verdicts', id, verdicts: [{ id, match, reason }] }
+  //   page   → { source: 'mp-triage', type: 'failed', id, code }
+  const $ = id => document.getElementById(id);
+  const LOG_MAX = 30;
+  let sample = null;
+  let perms = null;
+  let ready = false;
+  let extSeenAt = 0;
+  let today = { day: new Date().toDateString(), judged: 0, passed: 0, turned: 0 };
+  const queue = [];
+  let busy = false;
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('mp-triage-today') || 'null');
+    if (saved?.day === today.day) today = saved;
+  } catch { /* storage unavailable: start the tally at zero */ }
+
+  const say = msg => window.postMessage({ source: 'mp-triage', ...msg }, '*');
+  const hello = () => say({ type: 'hello', ready, paused: $('pause').checked });
+
+  function setLight(id, state, text) {
+    $(id).dataset.state = state;
+    $(id).querySelector('span:last-child').textContent = text;
+  }
+
+  function renderExtension() {
+    const fresh = Date.now() - extSeenAt < 75000;
+    setLight('extLight', fresh ? 'on' : 'off', fresh
+      ? 'Extensie: verbonden'
+      : 'Extensie: niet gevonden. Staat de Marktplaats Speurder (versie 1.3 of nieuwer) aan in deze browser? Herlaad dan dit tabblad.');
+  }
+
+  function renderTally() {
+    if (today.day !== new Date().toDateString()) today = { day: new Date().toDateString(), judged: 0, passed: 0, turned: 0 };
+    $('judged').textContent = today.judged;
+    $('passed').textContent = today.passed;
+    $('turned').textContent = today.turned;
+    try { localStorage.setItem('mp-triage-today', JSON.stringify(today)); } catch { /* fine without */ }
+  }
+
+  function addToLog(job, verdicts, error) {
+    const li = document.createElement('li');
+    li.className = 'batch' + (error ? ' failed' : '');
+    const head = document.createElement('div');
+    head.className = 'batch-head';
+    const wish = document.createElement('span');
+    wish.className = 'wish';
+    wish.textContent = job.search || 'Zoekopdracht';
+    const when = document.createElement('span');
+    const passed = verdicts ? verdicts.filter(v => v.match).length : 0;
+    when.textContent = `${new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })} · ${verdicts ? `${passed} van ${verdicts.length} doorgelaten` : `${job.items.length} advertenties`}`;
+    head.append(wish, when);
+    li.append(head);
+    if (error) {
+      const p = document.createElement('p');
+      p.className = 'error';
+      p.textContent = error;
+      li.append(p);
+    }
+    if (verdicts) {
+      const titles = new Map(job.items.map(i => [i.id, i.title]));
+      const list = document.createElement('ul');
+      list.className = 'verdicts';
+      for (const v of verdicts) {
+        const row = document.createElement('li');
+        row.className = 'verdict ' + (v.match ? 'yes' : 'no');
+        const mark = document.createElement('span');
+        mark.className = 'mark';
+        mark.textContent = v.match ? 'past' : 'nee';
+        const title = document.createElement('span');
+        title.className = 'title';
+        title.textContent = titles.get(v.id) || v.id;
+        const why = document.createElement('span');
+        why.className = 'why';
+        why.textContent = v.reason;
+        row.append(mark, title, why);
+        list.append(row);
+      }
+      li.append(list);
+    }
+    $('log').prepend(li);
+    while ($('log').children.length > LOG_MAX) $('log').lastElementChild.remove();
+    $('empty').hidden = true;
+  }
+
+  const ERROR_TEXT = {
+    not_granted: 'Claude mag vanuit deze pagina niet gebruikt worden. Geef toestemming via Rechten beheren.',
+    rate_limited: 'Je Claude-limiet is (even) bereikt. De Speurder probeert het later opnieuw.',
+    session_expired: 'Je bent uitgelogd bij claude.ai. Log opnieuw in en herlaad dit tabblad.',
+    sampling_disabled: 'Claude is voor je account niet beschikbaar vanuit een artifact.',
+    refused: 'Claude weigerde deze advertenties te beoordelen.',
+    invalid_json: 'Claude gaf geen bruikbaar antwoord. De Speurder probeert het later opnieuw.',
+    empty_completion: 'Claude gaf geen antwoord. De Speurder probeert het later opnieuw.',
+  };
+
+  function cleanVerdicts(answer, items) {
+    const ids = new Set(items.map(i => i.id));
+    const list = Array.isArray(answer?.verdicts) ? answer.verdicts : Array.isArray(answer) ? answer : [];
+    return list
+      .filter(v => v && ids.has(String(v.id)))
+      .map(v => ({ id: String(v.id), match: v.match === true, reason: String(v.reason || '').slice(0, 200) }));
+  }
+
+  async function work() {
+    if (busy) return;
+    busy = true;
+    while (queue.length) {
+      const job = queue.shift();
+      if ($('pause').checked) { say({ type: 'failed', id: job.id, code: 'paused' }); continue; }
+      if (!sample || !ready) { say({ type: 'failed', id: job.id, code: 'not_ready' }); continue; }
+      try {
+        const answer = await sample.json(job.prompt, { effort: 'low' });
+        const verdicts = cleanVerdicts(answer, job.items);
+        say({ type: 'verdicts', id: job.id, verdicts });
+        today.judged += verdicts.length;
+        today.passed += verdicts.filter(v => v.match).length;
+        today.turned += verdicts.filter(v => !v.match).length;
+        renderTally();
+        addToLog(job, verdicts);
+      } catch (e) {
+        const code = e?.code || 'upstream_error';
+        say({ type: 'failed', id: job.id, code });
+        addToLog(job, null, ERROR_TEXT[code] || 'Claude was even niet bereikbaar. De Speurder probeert het later opnieuw.');
+        if (code === 'not_granted' || code === 'sampling_disabled') { ready = false; await renderClaude(); hello(); }
+      }
+    }
+    busy = false;
+  }
+
+  window.addEventListener('message', e => {
+    if (e.source !== window || !e.data || e.data.source !== 'mp-speurder') return;
+    extSeenAt = Date.now();
+    renderExtension();
+    const d = e.data;
+    if (d.type === 'job' && typeof d.id === 'string' && typeof d.prompt === 'string' && Array.isArray(d.items)) {
+      queue.push({
+        id: d.id, prompt: d.prompt, search: String(d.search || ''),
+        items: d.items.map(i => ({ id: String(i.id), title: String(i.title || '') })),
+      });
+      work();
+    }
+  });
+
+  async function renderClaude() {
+    $('start').hidden = true;
+    $('manage').hidden = true;
+    if (!sample || !perms) {
+      setLight('claudeLight', 'off', 'Claude: niet beschikbaar in deze weergave. Open deze pagina op claude.ai in Chrome.');
+      return;
+    }
+    const state = await perms.state('sample');
+    ready = state === 'granted';
+    if (ready) setLight('claudeLight', 'on', 'Claude: klaar om te beoordelen');
+    else if (state === 'prompt') { setLight('claudeLight', 'wait', 'Claude: klik op Starten om toestemming te geven'); $('start').hidden = false; }
+    else if (state === 'denied') { setLight('claudeLight', 'off', 'Claude: toestemming geweigerd'); $('manage').hidden = false; }
+    else setLight('claudeLight', 'off', 'Claude: niet beschikbaar voor deze pagina');
+  }
+
+  $('start').onclick = async () => {
+    await perms.request(['sample']);
+    await renderClaude();
+    hello();
+  };
+  $('manage').onclick = async () => {
+    try { await perms.manage(); } catch { $('note').textContent = 'Open de rechten via het menu van dit artifact (Permissions).'; }
+    await renderClaude();
+    hello();
+  };
+  $('pause').onchange = hello;
+
+  renderTally();
+  renderExtension();
+  hello();
+  setInterval(() => { hello(); renderExtension(); }, 30000);
+
+  (async () => {
+    if (window.claude?.use) [sample, perms] = await Promise.all([claude.use('sample'), claude.use('permissions')]);
+    await renderClaude();
+    hello();
+  })();
+})();
+</script>

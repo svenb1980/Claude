@@ -32,6 +32,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -70,7 +71,7 @@ input, select {
   width: 100%;
 }
 input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-input[type=checkbox] { width: auto; accent-color: var(--accent); }
+input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accent); }
 
 .muted { color: var(--muted); }
 .warn { color: var(--warn); }

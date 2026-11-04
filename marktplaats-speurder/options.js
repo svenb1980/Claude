@@ -2,9 +2,9 @@ import { CATEGORIES } from './categories.js';
 import {
   DEFAULT_SETTINGS, CONDITIONS, DISTANCES_KM, MAX_PAGES, PAGE_SIZE, newWatch, validateWatch, fetchListings,
   fetchConditions, matchConditions, savedConditions, passesFilters, formatPrice, formatDistance, normalizePostcode,
-  websiteUrl, searchKey, timeAgo, watchLabel, el, startOfDay,
+  websiteUrl, searchKey, timeAgo, watchLabel, el, startOfDay, TRIAGE_URL,
 } from './lib.js';
-import { MODELS, DEFAULT_MODEL, triage, testKey } from './claude.js';
+import { MODELS, DEFAULT_MODEL, triage, triagePageStatus, testKey } from './claude.js';
 
 const $ = id => document.getElementById(id);
 let editingId = null; // id of the search open in the editor, null for a new one
@@ -291,7 +291,10 @@ $('test').onclick = async () => {
         box.replaceChildren(...lines, el('div', { className: 'muted', textContent: 'Claude beoordeelt de nieuwste advertenties…' }));
         const { claudeKey = '', settings = {} } = await chrome.storage.local.get(['claudeKey', 'settings']);
         try {
-          ({ verdicts } = await triage(sample, w.ai, { apiKey: claudeKey, model: settings.aiModel || DEFAULT_MODEL }));
+          ({ verdicts } = await triage(sample, w.ai, {
+            provider: settings.aiProvider || DEFAULT_SETTINGS.aiProvider, apiKey: claudeKey,
+            model: settings.aiModel || DEFAULT_MODEL, search: w.name || w.query,
+          }));
         } catch (e) {
           aiProblem = e.message;
         }
@@ -353,6 +356,8 @@ async function loadSettings() {
   $('maxNotify').value = String(s.maxNotify);
   $('notify').checked = s.notify;
   $('aiModel').value = s.aiModel;
+  $(s.aiProvider === 'api' ? 'viaApi' : 'viaPage').checked = true;
+  $('apiFields').hidden = s.aiProvider !== 'api';
 }
 
 async function saveSettings() {
@@ -364,6 +369,7 @@ async function saveSettings() {
       maxNotify: Number($('maxNotify').value),
       notify: $('notify').checked,
       aiModel: $('aiModel').value,
+      aiProvider: $('viaApi').checked ? 'api' : 'claudeai',
     },
   });
   toast('Instellingen opgeslagen.');
@@ -385,16 +391,36 @@ function showEstimate() {
 }
 
 function showUsage(u) {
-  $('aiUsage').textContent = u?.day === startOfDay(Date.now()) && u.listings
-    ? `Vandaag ${count(u.listings, 'advertentie', 'advertenties')} beoordeeld, geschat ${dollars(u.cost)}.`
-    : 'Vandaag nog niets beoordeeld.';
+  const judged = u?.day === startOfDay(Date.now()) ? u.listings : 0;
+  $('aiUsage').textContent = !judged ? 'Vandaag nog niets beoordeeld.'
+    : `Vandaag ${count(judged, 'advertentie', 'advertenties')} beoordeeld${u.cost ? `; via de API geschat ${dollars(u.cost)}` : ''}.`;
+}
+
+async function showPageStatus() {
+  const { connected, ready, paused } = await triagePageStatus();
+  const box = $('pageStatus');
+  box.className = 'route-detail small ' + (ready && !paused ? 'ok' : connected ? 'warn' : 'muted');
+  box.textContent = ready && paused ? 'De triage-pagina is open maar staat op pauze.'
+    : ready ? '✓ De triage-pagina is open en klaar.'
+    : connected ? 'De triage-pagina is open: klik daar eenmalig op Starten om Claude toestemming te geven.'
+    : 'De triage-pagina is nu niet open. Open hem en laat het tabblad openstaan (vastzetten kan via rechtsklik op het tabblad).';
 }
 
 async function loadClaude() {
   const { claudeKey = '', aiUsage } = await chrome.storage.local.get(['claudeKey', 'aiUsage']);
   $('claudeKey').value = claudeKey;
+  $('triageLink').href = TRIAGE_URL;
   showEstimate();
   showUsage(aiUsage);
+  await showPageStatus();
+}
+
+for (const id of ['viaPage', 'viaApi']) {
+  $(id).onchange = async () => {
+    $('apiFields').hidden = !$('viaApi').checked;
+    await saveSettings();
+    checkNow(); // listings waiting for Claude may be judged on the new route
+  };
 }
 
 $('claudeKey').onchange = async () => {
@@ -455,10 +481,11 @@ $('importFile').onchange = async () => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.watches || changes.state)) renderWatches();
   if (area === 'local' && changes.aiUsage) showUsage(changes.aiUsage.newValue);
+  if (area === 'session' && changes.triagePage) showPageStatus();
 });
 
 setupEditorFields();
 await loadSettings();
 await loadClaude();
 await renderWatches();
-setInterval(renderWatches, 30000); // keep the "x min ago" texts fresh
+setInterval(() => { renderWatches(); showPageStatus(); }, 30000); // keep "x min ago" and the page status fresh

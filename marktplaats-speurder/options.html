@@ -48,6 +48,11 @@
     textarea { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%; resize: vertical; }
     textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
     .ai { background: var(--accent-soft); border-radius: var(--radius); padding: 10px 12px; }
+    .routes { display: grid; gap: 10px; }
+    .route { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; cursor: pointer; }
+    .route input { margin-top: 3px; }
+    .route-detail { margin-left: 26px; }
+    .ok { color: var(--ok); }
 
     #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
     #toast.show { opacity: 1; }
@@ -102,16 +107,24 @@
 
   <section>
     <h2>Claude</h2>
-    <p class="muted small" style="margin-top:0">Geef een zoekopdracht een omschrijving in je eigen woorden, dan beoordeelt Claude elke nieuwe advertentie en laat alleen door wat erbij past. Daarvoor is een eigen API-sleutel nodig, aan te maken op <a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a>; het gebruik wordt per advertentie afgerekend.</p>
-    <div class="grid">
-      <label class="f">API-sleutel
-        <span class="row"><input id="claudeKey" type="password" autocomplete="off" placeholder="sk-ant-…"> <button id="testKey" type="button">Testen</button></span>
-        <span class="hint" id="keyStatus">Blijft alleen in deze browser en gaat niet mee in de back-up.</span>
-      </label>
-      <label class="f">Model
-        <select id="aiModel"></select>
-        <span class="hint"><span id="aiEstimate"></span> <span id="aiUsage"></span></span>
-      </label>
+    <p class="muted small" style="margin-top:0">Geef een zoekopdracht een omschrijving in je eigen woorden, dan beoordeelt Claude elke nieuwe advertentie en laat alleen door wat erbij past.</p>
+    <div class="routes">
+      <label class="route"><input type="radio" name="aiProvider" id="viaPage" value="claudeai">
+        <span><b>Via mijn Claude-abonnement</b> – geen extra kosten. Houd de <a id="triageLink" target="_blank" rel="noopener">triage-pagina</a> op claude.ai open in een tabblad; die vraagt Claude om een oordeel.</span></label>
+      <div class="route-detail small" id="pageStatus"></div>
+      <label class="route"><input type="radio" name="aiProvider" id="viaApi" value="api">
+        <span><b>Via een API-sleutel</b> – betaald per advertentie, werkt zonder open tabblad. Sleutel aan te maken op <a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a>.</span></label>
+      <div class="route-detail grid" id="apiFields">
+        <label class="f">API-sleutel
+          <span class="row"><input id="claudeKey" type="password" autocomplete="off" placeholder="sk-ant-…"> <button id="testKey" type="button">Testen</button></span>
+          <span class="hint" id="keyStatus">Blijft alleen in deze browser en gaat niet mee in de back-up.</span>
+        </label>
+        <label class="f">Model
+          <select id="aiModel"></select>
+          <span class="hint" id="aiEstimate"></span>
+        </label>
+      </div>
+      <span class="hint small" id="aiUsage"></span>
     </div>
   </section>
 

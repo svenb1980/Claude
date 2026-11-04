@@ -12,6 +12,7 @@
 //   rejected  – listings Claude turned down, with its reason, newest first; only written here
 //   aiUsage   – today's Claude usage: listings judged, tokens, estimated cost
 //   claudeKey – the user's Claude API key (kept out of `settings`, so not in back-ups)
+//   triagePage (storage.session) – the open Marktplaats Triage page, registered by bridge.js
 //   readUntil – listings found after this time count as unread; only written by the popup
 
 import {
@@ -77,7 +78,9 @@ async function triageHits(w, st, hits, ctx) {
 
   let result;
   try {
-    result = await triage(st.pending, w.ai.trim(), { apiKey: ctx.apiKey, model: ctx.settings.aiModel || DEFAULT_MODEL });
+    result = await triage(st.pending, w.ai.trim(), {
+      provider: ctx.settings.aiProvider, apiKey: ctx.apiKey, model: ctx.settings.aiModel || DEFAULT_MODEL, search: watchLabel(w),
+    });
   } catch (e) {
     st.triageError = e.message;
     return [];
@@ -330,7 +333,28 @@ chrome.notifications.onClicked.addListener(id => {
   chrome.notifications.clear(id);
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+// The triage page says hello every 30 s through bridge.js. Remember where it is, and when it
+// becomes ready while listings are waiting for Claude, judge them right away.
+let lastWakeForPending = 0;
+async function registerTriagePage(msg, sender) {
+  const { triagePage: before } = await chrome.storage.session.get('triagePage');
+  await chrome.storage.session.set({
+    triagePage: { tabId: sender.tab.id, frameId: sender.frameId, ready: !!msg.ready, paused: !!msg.paused, at: Date.now() },
+  });
+  if (!msg.ready || msg.paused || Date.now() - lastWakeForPending < 60000) return;
+  const { state = {} } = await chrome.storage.local.get('state');
+  const waiting = Object.values(state).some(st => st.pending?.length);
+  if (waiting && (!before?.ready || before.paused || before.tabId !== sender.tab.id || Date.now() - before.at > 90000)) {
+    lastWakeForPending = Date.now();
+    checkAll();
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === 'triagePage' && sender.tab) {
+    registerTriagePage(msg, sender);
+    return;
+  }
   if (msg?.type === 'checkNow') {
     checkAll().then(() => sendResponse({ ok: true }), e => sendResponse({ ok: false, error: e.message }));
     return true;

@@ -35,13 +35,19 @@ Tips:
 - Zegt een advertentie iets niet (bijv. de staat), dan laat Claude hem standaard door. Wil je dat niet, schrijf dan "alleen als de staat vermeld is" of "wees streng".
 - De zoekterm en filters blijven het eerste zeef; Claude beoordeelt alleen wat daarna overblijft.
 
-**Instellen** (Instellingen → Claude):
-1. Maak een API-sleutel aan op [platform.claude.com](https://platform.claude.com/) (je hebt daar tegoed nodig) en plak hem in **API-sleutel**. Met **Testen** controleer je of hij werkt.
-2. Kies een **model**. Standaard is Claude Opus 5.5 (beste oordeel, ongeveer $0,20 per 100 beoordeelde advertenties). Claude Sonnet 5.5 kost ongeveer de helft, Claude Haiku 5.5 is zeer goedkoop (ongeveer $0,01 per 100) maar minder scherp bij twijfelgevallen. Wat het vandaag gekost heeft, staat onder het model.
+### Via je Claude-abonnement (standaard, geen extra kosten)
+De beoordeling loopt via de pagina **[Marktplaats Triage](https://claude.ai/artifact/PFrhocoSYukf1XQ4atgc6S)** op claude.ai. Die pagina vraagt Claude om een oordeel met je eigen Claude-account, net als een chatbericht; het telt mee voor het gebruik van je abonnement, maar kost niets extra.
 
-De sleutel blijft alleen in deze browser en gaat niet mee in de back-up. Advertentiegegevens worden voor de beoordeling naar Claude (Anthropic) gestuurd.
+1. Open de triage-pagina in Chrome (dezelfde browser als de extensie) en zet het tabblad vast (rechtsklik op het tabblad → *Vastzetten*).
+2. Klik eenmalig op **Starten** en geef Claude toestemming.
+3. Laat het tabblad openstaan. Bovenaan staat of de extensie verbonden is; daaronder zie je per zoekopdracht wat Claude heeft doorgelaten en afgekeurd.
 
-Lukt de beoordeling even niet (geen sleutel, tegoed op, geen verbinding), dan wachten de nieuwe advertenties en worden ze de volgende ronde alsnog beoordeeld; je ziet dan een oranje **!** en de melding bij de zoekopdracht. Haal je de omschrijving weg, dan komen wachtende advertenties gewoon door.
+Is de pagina dicht, of staat hij op **Pauzeren**, dan wachten nieuwe advertenties en worden ze beoordeeld zodra de pagina weer klaarstaat (je ziet dan een oranje **!** en in de pop-up een link naar de pagina). Na het bijwerken van de extensie: herlaad het triage-tabblad één keer.
+
+### Via een API-sleutel (betaald, zonder open tabblad)
+Kies onder Instellingen → Claude voor *Via een API-sleutel* als je de pagina niet open wilt houden. Maak een sleutel aan op [platform.claude.com](https://platform.claude.com/) (daar heb je tegoed nodig), plak hem in **API-sleutel** en controleer hem met **Testen**. Kies een **model**: standaard Claude Opus 5.5 (ongeveer $0,20 per 100 beoordeelde advertenties), Claude Sonnet 5.5 kost ongeveer de helft, Claude Haiku 5.5 ongeveer $0,01 per 100. De sleutel blijft alleen in deze browser en gaat niet mee in de back-up.
+
+Bij beide manieren gaan de advertentiegegevens (titel, prijs, omschrijving, plaats) en je omschrijving naar Claude (Anthropic). Lukt een beoordeling even niet, dan wachten de nieuwe advertenties en worden ze de volgende ronde alsnog beoordeeld. Haal je de omschrijving weg, dan komen wachtende advertenties gewoon door.
 
 ## Wat telt als nieuw?
 Alleen advertenties die **na de vorige controle geplaatst** zijn. Bij het opslaan onthoudt de Speurder wat er nu al staat; daarna meldt hij alleen nieuw geplaatste advertenties. Pas je de filters aan, dan begint hij opnieuw.

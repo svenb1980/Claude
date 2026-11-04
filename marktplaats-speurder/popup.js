@@ -1,4 +1,4 @@
-import { formatPrice, formatDistance, placedLabel, timeAgo, watchLabel, el } from './lib.js';
+import { formatPrice, formatDistance, placedLabel, timeAgo, watchLabel, el, TRIAGE_URL } from './lib.js';
 
 const isTab = new URLSearchParams(location.search).get('view') === 'tab';
 if (isTab) document.body.classList.add('tab');
@@ -25,6 +25,9 @@ async function render() {
     for (const w of active) {
       const err = state[w.id]?.lastError || state[w.id]?.triageError;
       if (err) status.append(el('span', { className: 'err', textContent: `⚠ ${watchLabel(w)}: ${err}` }));
+    }
+    if (active.some(w => state[w.id]?.triageError) && settings.aiProvider !== 'api') {
+      status.append(el('a', { className: 'err', href: TRIAGE_URL, target: '_blank', rel: 'noopener', textContent: 'Triage-pagina openen ↗' }));
     }
   }
 
