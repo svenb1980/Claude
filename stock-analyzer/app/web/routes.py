@@ -26,6 +26,7 @@ from sqlalchemy import func, select
 
 from app import auth
 from app.analysis.backtest import run_backtest
+from app.analysis.comparison import MARKETS, PERIODS, build_comparison, chart_payload
 from app.analysis.levels import break_even_move_pct, daily_levels, intraday_levels, split_sessions
 from app.analysis.scoring import FACTORS
 from app.analysis.screener import PRESETS, SCREEN_FACTORS, portfolio_profile, run_screen, score_stock, _label
@@ -337,6 +338,7 @@ def dashboard(request: Request):
         portfolio, signals, analysis = compute_signals(session, current.id, _user(request).id)
         status = refresh_status(session)
         upcoming = expected_dividends(session, current.id)[:6]
+        comparison = build_comparison(session, current.id)
     sectors: dict[str, float] = {}
     for position in portfolio.positions:
         if position.weight_pct is not None:
@@ -347,8 +349,19 @@ def dashboard(request: Request):
     return _render(
         request, "dashboard.html",
         portfolio=portfolio, signals=signal_by_isin, status=status,
-        upcoming=upcoming, allocation=allocation,
+        upcoming=upcoming, allocation=allocation, comparison=comparison,
+        periods=[name for name, _ in PERIODS], market_keys=[key for key, _, _ in MARKETS if key in comparison.markets],
     )
+
+
+@router.get("/api/market-comparison")
+def market_comparison_api(request: Request):
+    with session_scope(_factory(request)) as session:
+        current = _current_portfolio(request, session)
+        comparison = build_comparison(session, current.id)
+    if not comparison.available:
+        return JSONResponse({"error": T["cmp_no_data"]})
+    return JSONResponse(_finite(chart_payload(comparison, T)))
 
 
 @router.post("/refresh")

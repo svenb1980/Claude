@@ -10,6 +10,7 @@
   const axisFull = new Intl.DateTimeFormat("nl-NL", { month: "short", year: "2-digit" });
   const axisShort = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "short" });
   const axisTime = new Intl.DateTimeFormat("nl-NL", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const pctf = new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const LEVEL_WINDOW = 0.35; // Lines further than this from the price would flatten the chart.
 
   function el(name, attrs, parent) {
@@ -60,14 +61,36 @@
     sorted.forEach((s) => { s.labelY = Math.max(s.labelY, top); });
   }
 
-  function drawLine(box, config, points) {
+  // Each line as % change since its first value in the visible period.
+  function restate(points, series) {
+    const bases = {};
+    series.forEach((s) => {
+      const first = points.find((p) => p[s.key] != null);
+      bases[s.key] = first ? first[s.key] : null;
+    });
+    return points.map((p) => {
+      const out = { ...p };
+      series.forEach((s) => {
+        out[s.key] = p[s.key] == null || !bases[s.key] ? null : (p[s.key] / bases[s.key] - 1) * 100;
+      });
+      return out;
+    });
+  }
+
+  function signedPct(value) {
+    return `${value > 0 ? "+" : ""}${pctf.format(value)}%`;
+  }
+
+  function drawLine(box, config, rawPoints) {
     box.textContent = "";
     const dateKey = config.dateKey || "d";
-    const series = config.series.filter((s) => points.some((p) => p[s.key] != null));
-    if (points.length < 2 || !series.length) return;
+    const series = config.series.filter((s) => rawPoints.some((p) => p[s.key] != null));
+    if (rawPoints.length < 2 || !series.length) return;
+    const points = config.restate ? restate(rawPoints, series) : rawPoints;
+    const fmt = config.restate ? signedPct : (v) => nf.format(v);
 
     const hasLevels = (config.levels || []).length > 0;
-    const W = 900, H = 340, M = { l: 52, r: hasLevels ? 150 : 16, t: 10, b: 26 };
+    const W = 900, H = 340, M = { l: 52, r: hasLevels || config.restate ? 150 : 16, t: 10, b: 26 };
     const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, box);
 
     const dates = points.map((p) => new Date(p[dateKey]));
@@ -84,7 +107,7 @@
     niceTicks(y0, y1, 5).forEach((tick) => {
       el("line", { x1: M.l, x2: W - M.r, y1: y(tick), y2: y(tick), stroke: "var(--grid)", "stroke-width": 1 }, svg);
       const label = el("text", { x: M.l - 8, y: y(tick) + 4, "text-anchor": "end", "font-size": 12, fill: "var(--text-secondary)" }, svg);
-      label.textContent = nf.format(tick);
+      label.textContent = config.restate ? `${nf.format(tick)}%` : nf.format(tick);
     });
 
     const spanDays = (dates[dates.length - 1] - dates[0]) / 86400000;
@@ -119,6 +142,23 @@
       text.textContent = `${l.label} ${nf.format(l.price)}`;
     });
 
+    if (config.restate) {
+      const ends = series.map((s) => {
+        let last = null;
+        for (let i = points.length - 1; i >= 0 && last == null; i--) last = points[i][s.key];
+        return { series: s, value: last, y: y(last), labelY: y(last) + 4 };
+      }).filter((e) => e.value != null);
+      spreadLabels(ends, 15, M.t + 10, H - M.b);
+      ends.forEach((e) => {
+        if (Math.abs(e.labelY - 4 - e.y) > 1) {
+          el("line", { x1: W - M.r, x2: W - M.r + 6, y1: e.y, y2: e.labelY - 4, stroke: `var(--series-${e.series.slot})`, "stroke-width": 1 }, svg);
+        }
+        const text = el("text", { x: W - M.r + 8, y: e.labelY, "font-size": 12, fill: "var(--text-primary)" }, svg);
+        const name = e.series.label.length > 13 ? `${e.series.label.slice(0, 12)}…` : e.series.label;
+        text.textContent = `${name} ${signedPct(e.value)}`;
+      });
+    }
+
     const cross = el("line", { y1: M.t, y2: H - M.b, stroke: "var(--text-secondary)", "stroke-width": 1, visibility: "hidden" }, svg);
     const dots = series.map((s) => el("circle", { r: 4, fill: `var(--series-${s.slot})`, stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" }, svg));
     const tip = document.createElement("div");
@@ -151,7 +191,7 @@
         const row = document.createElement("div");
         const mark = document.createElement("i");
         mark.style.background = `var(--series-${s.slot})`;
-        row.append(mark, `${s.label}: ${nf.format(value)}`);
+        row.append(mark, `${s.label}: ${fmt(value)}`);
         tip.appendChild(row);
       });
       tip.style.display = "block";
@@ -159,6 +199,21 @@
       const left = x(i) * scale;
       tip.style.left = left > rect.width / 2 ? `${left - tip.offsetWidth - 12}px` : `${left + 12}px`;
     });
+  }
+
+  function sliceRange(points, range, dateKey) {
+    if (range.months === undefined) return points.slice(-range.days);
+    if (range.months === null) return points;
+    // In UTC, so summer time can't shift the date. A day that doesn't exist in the target
+    // month becomes that month's last day, as on the server (31 August - 6 months = 28 February).
+    const last = new Date(points[points.length - 1][dateKey]);
+    const firstOfMonth = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() - range.months, 1));
+    const monthDays = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth() + 1, 0)).getUTCDate();
+    const cutoff = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), Math.min(last.getUTCDate(), monthDays)));
+    // Start at the last point on or before the cutoff, as the table on the page does.
+    let from = 0;
+    points.forEach((p, i) => { if (new Date(p[dateKey]) <= cutoff) from = i; });
+    return points.slice(from);
   }
 
   function lineChart(container, config) {
@@ -173,8 +228,10 @@
     if (config.ranges) {
       const bar = document.createElement("div");
       bar.className = "chart-ranges";
-      const usable = config.ranges.filter((r, i) => i === 0 || all.length > config.ranges[i - 1].days);
-      const start = usable.find((r) => r.days === config.defaultRange) || usable[usable.length - 1];
+      const usable = config.ranges.filter((r, i) => r.months !== undefined || i === 0 || all.length > config.ranges[i - 1].days);
+      const start = usable.find((r) => r === config.currentRange)
+        || usable.find((r) => r.days === config.defaultRange || (r.months !== undefined && r.months === config.defaultMonths))
+        || usable[usable.length - 1];
       const buttons = usable.map((range) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -185,7 +242,8 @@
       });
       function select(range, active) {
         buttons.forEach((b) => b.button.setAttribute("aria-pressed", String(b.button === active)));
-        drawLine(box, config, all.slice(-range.days));
+        config.currentRange = range;
+        drawLine(box, config, sliceRange(all, range, config.dateKey || "d"));
       }
       container.append(bar, box);
       select(start, buttons.find((b) => b.range === start).button);
@@ -257,6 +315,54 @@
       });
       hit.addEventListener("pointerleave", () => { tip.style.display = "none"; });
     });
+  }
+
+  async function marketCompare(section) {
+    const say = (text) => {
+      section.textContent = "";
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = text;
+      section.appendChild(p);
+    };
+    say(section.dataset.loading);
+    let data;
+    try {
+      data = await (await fetch("/api/market-comparison")).json();
+    } catch (error) {
+      say(section.dataset.failed);
+      return;
+    }
+    if (data.error) { say(data.error); return; }
+    section.textContent = "";
+
+    const controls = document.createElement("label");
+    controls.className = "compare-controls";
+    const select = document.createElement("select");
+    data.subjects.forEach((subject) => {
+      const option = document.createElement("option");
+      option.value = subject.key;
+      option.textContent = subject.label;
+      select.appendChild(option);
+    });
+    controls.append(section.dataset.subjectLabel, select);
+    const chart = document.createElement("div");
+    section.append(controls, chart);
+
+    const config = {
+      points: data.points, ranges: data.ranges, defaultMonths: data.defaultMonths, restate: true,
+    };
+    function render() {
+      const subject = data.subjects.find((s) => s.key === select.value);
+      config.series = [
+        { key: subject.key, label: subject.label, slot: 1 },
+        ...data.markets.map((m, i) => ({ key: m.key, label: m.label, slot: i + 2 })),
+      ];
+      chart.textContent = "";
+      lineChart(chart, config);
+    }
+    select.addEventListener("change", render);
+    render();
   }
 
   function intradayTable(section, rows) {
@@ -334,4 +440,5 @@
   document.querySelectorAll(".line-chart").forEach((c) => lineChart(c, JSON.parse(c.dataset.chart)));
   document.querySelectorAll(".bar-chart").forEach(barChart);
   document.querySelectorAll(".intraday").forEach(intraday);
+  document.querySelectorAll(".market-compare").forEach(marketCompare);
 })();

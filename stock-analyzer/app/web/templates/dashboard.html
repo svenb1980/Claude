@@ -32,6 +32,52 @@
 {% if portfolio.unpriced %}<p class="notice">{{ t.dash_unpriced.format(n=portfolio.unpriced) }}</p>{% endif %}
 
 <section class="card">
+  <h2>{{ t.cmp_title }}</h2>
+  {% if comparison.markets_missing %}<p class="notice">{{ t.cmp_markets_missing }}</p>{% endif %}
+  {% if comparison.available %}
+  <div class="market-compare" data-failed="{{ t.cmp_failed }}" data-subject-label="{{ t.cmp_subject }}" data-loading="{{ t.intra_loading }}"></div>
+  <div class="table-wrap">
+  <table class="compare-table">
+    <thead><tr><th>{{ t.cmp_col_line }}</th>{% for name in periods %}<th class="num">{{ t["period_" ~ name] }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for row in comparison.table %}
+      <tr{% if row.key == "portfolio" %} class="row-strong"{% endif %}>
+        <td>{{ t["market_" ~ row.key] }}</td>
+        {% for name in periods %}
+        <td class="num {{ m.signed_class(row.returns[name]) }}">{{ row.returns[name] | signed_ratio_pct }}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small">{{ t.cmp_notes }} {{ t.cmp_as_of.format(date=comparison.as_of | nldate) }}</p>
+  {% if comparison.excluded %}<p class="muted small">{{ t.cmp_excluded.format(names=comparison.excluded | join(", ")) }}</p>{% endif %}
+  {% if comparison.flagged %}<p class="muted small">{{ t.cmp_flagged.format(n=comparison.flagged) }}</p>{% endif %}
+
+  {% if comparison.stocks and market_keys %}
+  <h3>{{ t.cmp_stocks_title }}</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ t.col_product }}</th><th class="num">{{ t.cmp_col_year }}</th>{% for key in market_keys %}<th class="num">{{ t.cmp_col_versus.format(market=t["market_" ~ key]) }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for stock in comparison.stocks %}
+      <tr>
+        <td><a href="/stocks/{{ stock.isin }}">{{ stock.name }}</a></td>
+        <td class="num {{ m.signed_class(stock.year_return) }}">{{ stock.year_return | signed_ratio_pct }}</td>
+        {% for key in market_keys %}
+        <td class="num {{ m.signed_class(stock.versus[key]) }}">{{ stock.versus[key] | signed_points }}</td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  {% else %}<p class="muted">{{ t.cmp_no_data }}</p>{% endif %}
+</section>
+
+<section class="card">
   <h2>{{ t.dash_positions }}</h2>
   <div class="table-wrap">
   <table>

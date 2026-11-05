@@ -142,9 +142,12 @@ def refresh_all(factory: sessionmaker[Session], provider: MarketDataProvider) ->
         with session_scope(factory) as session:
             resolve_missing_symbols(session, provider)
             isins = list(session.scalars(select(Product.isin).where(Product.ticker.is_not(None))))
-            benchmarks = sorted(all_benchmarks(session))
+            from app.analysis.comparison import MARKETS
 
-        currencies: set[str] = set()
+            benchmarks = sorted(all_benchmarks(session) | {ticker for _, ticker, _ in MARKETS})
+
+        # The USA 500 is compared in EUR, whatever the portfolio holds.
+        currencies: set[str] = {"USD"}
         total = len(isins)
         for isin in isins:
             # One commit per stock, so a crash halfway keeps what was already fetched.

@@ -293,6 +293,36 @@ T = {
     ],
     "chart_table_date": "Datum",
     "error_title": "Er ging iets mis",
+    # Comparison with the market
+    "cmp_title": "Mijn aandelen tegenover de markt",
+    "cmp_subject": "Vergelijk",
+    "cmp_col_line": "Vergelijking",
+    "cmp_col_year": "1 jaar",
+    "cmp_col_versus": "t.o.v. {market}",
+    "cmp_stocks_title": "Per aandeel, over 1 jaar",
+    "cmp_notes": (
+        "Alles in euro en zonder dividend, omdat de indices ook zonder dividend zijn. De portefeuillelijn is "
+        "een tijdgewogen rendement inclusief transactiekosten, dus bijkopen of verkopen verschuift de lijn niet. "
+        "Europe 50 is de Euro Stoxx 50 (alleen eurolanden), USA 500 is de S&P 500. Op de koerslijn van een los "
+        "aandeel tellen aankoopmoment en kosten niet mee."
+    ),
+    "cmp_as_of": "Koersen t/m {date}.",
+    "cmp_markets_missing": "Nog niet alle indices zijn opgehaald. Klik bovenaan op Marktdata vernieuwen.",
+    "cmp_no_data": "Nog geen vergelijking mogelijk: vernieuw de marktdata nadat je transacties hebt geïmporteerd.",
+    "cmp_failed": "De grafiek kon niet worden geladen.",
+    "cmp_excluded": "Niet meegerekend omdat een koers ontbreekt: {names}.",
+    "cmp_flagged": "{n} transactie(s) wijken zo sterk af van de koers dat het vermoedelijk om een split of ISIN-wijziging gaat. Die tellen niet mee als winst of verlies.",
+    "market_portfolio": "Portefeuille",
+    "market_aex": "AEX",
+    "market_europe50": "Europe 50",
+    "market_usa500": "USA 500",
+    "period_1m": "1 mnd",
+    "period_3m": "3 mnd",
+    "period_6m": "6 mnd",
+    "period_1y": "1 jaar",
+    "period_3y": "3 jaar",
+    "period_5y": "5 jaar",
+    "period_all": "Sinds start",
     # Accounts
     "nav_screener": "Koopkandidaten",
     "nav_account": "Account",

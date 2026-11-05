@@ -206,6 +206,25 @@ def test_uploaded_text_is_escaped(client):
     assert "&lt;script&gt;" in response.text
 
 
+def test_dashboard_compares_with_the_market(loaded):
+    text = loaded.get("/").text
+    assert "Mijn aandelen tegenover de markt" in text
+    assert "Portefeuille" in text
+    data = loaded.get("/api/market-comparison").json()
+    assert data["subjects"][0]["label"] == "Portefeuille"
+    assert data["points"]
+    json.dumps(data, allow_nan=False)
+
+
+def test_market_comparison_is_private(two_users):
+    admin, bob = two_users
+    clear_cache()
+    assert "error" not in admin.get("/api/market-comparison").json()
+    data = bob.get("/api/market-comparison").json()
+    assert "error" in data
+    assert "ACME" not in json.dumps(data)
+
+
 def test_dashboard_shows_positions_and_signals(loaded):
     text = loaded.get("/").text
     assert "ACME NV" in text and "US CORP" in text

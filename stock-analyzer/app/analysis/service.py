@@ -119,6 +119,9 @@ def compute_signals(session: Session, portfolio_id: int, user_id: int) -> tuple[
 
 
 def clear_cache() -> None:
+    from app.analysis.comparison import clear_comparison_cache
+
+    clear_comparison_cache()
     with _cache_lock:
         _cache["version"] = None
         _cache["values"] = {}

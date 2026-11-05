@@ -60,6 +60,19 @@ Each holding gets a 0-100 score on six factors, combined using weights you can e
 - A position above the maximum weight never gets Bijkopen.
 - ETFs and funds skip the company-based factors.
 
+## Compared with the market
+
+**Overzicht** compares the portfolio, or any one of your stocks, with the AEX, Europe 50 and USA 500 over a
+period you choose, with a table per period and per stock.
+
+- The portfolio line is a time-weighted return including costs, so buying or selling doesn't move it.
+- Everything is in EUR and excludes dividends on both sides, because these are price indices. The USA 500 is
+  converted from USD, so it includes the currency effect.
+- Europe 50 is the Euro Stoxx 50 (eurozone only). The STOXX Europe 50, with the UK and Switzerland, isn't on
+  Yahoo. USA 500 is the S&P 500. They're set in `MARKETS` in `app/analysis/comparison.py`.
+- Trades far from the closing price are treated as splits or ISIN changes and don't count as gain or loss.
+  The page says how many.
+
 ## Buy candidates
 
 **Koopkandidaten** ranks about 1,250 stocks outside the selected portfolio, on company results, dividend,

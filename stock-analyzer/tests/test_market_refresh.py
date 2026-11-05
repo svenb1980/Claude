@@ -33,7 +33,9 @@ def test_second_refresh_only_fetches_recent_days(factory, session, provider):
     provider.history_calls.clear()
     refresh_all(factory, provider)
     assert provider.history_calls
-    assert all(start is not None for _, start in provider.history_calls)
+    # Tickers the fake source has no data for are simply asked for in full again.
+    known = [(ticker, start) for ticker, start in provider.history_calls if ticker in provider.series]
+    assert known and all(start is not None for _, start in known)
 
 
 def test_changed_history_triggers_full_refetch(session, provider):

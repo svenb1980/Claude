@@ -170,6 +170,9 @@ label { display: flex; flex-direction: column; gap: .2rem; font-size: .88rem; }
 .chart-ranges button { padding: .1rem .5rem; font-size: .8rem; }
 .chart-ranges button[aria-pressed="true"] { background: var(--neutral-bg); font-weight: 600; }
 .level-table { margin-top: .75rem; }
+.compare-table { margin-top: .75rem; }
+.row-strong td { font-weight: 600; }
+.compare-controls { display: flex; flex-direction: row; align-items: center; gap: .5rem; margin-bottom: .5rem; font-size: .88rem; }
 .intraday-output { margin-top: .75rem; }
 .chart-box { position: relative; }
 .chart-box svg { display: block; width: 100%; height: auto; touch-action: pan-y; }

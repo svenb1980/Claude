@@ -45,6 +45,13 @@ def signed_ratio_pct(value, decimals: int = 1) -> str:
     return ("+" if float(value) > 0 else "") + ratio_pct(value, decimals)
 
 
+def signed_points(value) -> str:
+    """A difference between two returns, in percentage points."""
+    if value is None:
+        return DASH
+    return ("+" if float(value) > 0 else "") + number(float(value) * 100, 1) + " pp"
+
+
 def date(value) -> str:
     if not value:
         return DASH
@@ -69,5 +76,5 @@ def quantity(value) -> str:
 
 FILTERS = {
     "number": number, "eur": eur, "signed_eur": signed_eur, "pct": pct, "ratio_pct": ratio_pct,
-    "signed_ratio_pct": signed_ratio_pct, "nldate": date, "nldatetime": datetime, "quantity": quantity,
+    "signed_ratio_pct": signed_ratio_pct, "signed_points": signed_points, "nldate": date, "nldatetime": datetime, "quantity": quantity,
 }
