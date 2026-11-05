@@ -44,10 +44,16 @@ T = {
     "ask_example_buy": "Wanneer is een hoog dividendrendement juist een waarschuwing?",
     "ask_not_ready_title": "Vraag Claude is nog niet ingesteld",
     "ask_not_ready": (
-        "De beheerder moet hiervoor eenmalig een API-sleutel van Anthropic instellen als "
-        "ANTHROPIC_API_KEY en de app opnieuw starten. Het gebruik wordt per vraag aan die sleutel "
-        "berekend, los van een Claude-abonnement. Zie de README."
+        "Hiervoor moet Claude Code op deze computer staan en ingelogd zijn met je Claude-abonnement: "
+        "voer eenmalig 'claude auth login' uit en start de app opnieuw. Zie de README."
     ),
+    "ask_owner_only": (
+        "Vraag Claude gebruikt het Claude-abonnement van de eerste beheerder en is daarom alleen "
+        "voor dat account beschikbaar."
+    ),
+    "ask_subscription": "Vragen tellen mee voor de limieten van je Claude-abonnement.",
+    "ask_cli_login": "Claude Code is niet ingelogd. Voer op deze computer 'claude auth login' uit en probeer het opnieuw.",
+    "ask_cli_limit": "De limiet van je Claude-abonnement is bereikt. Probeer het later opnieuw.",
     "ask_limit": "Je hebt het maximum van {limit} vragen per dag bereikt. Morgen kun je weer verder.",
     "ask_refused": "Claude kan deze vraag niet beantwoorden. Probeer het anders te formuleren.",
     "ask_error_key": "De API-sleutel wordt niet geaccepteerd. Vraag de beheerder die te controleren.",

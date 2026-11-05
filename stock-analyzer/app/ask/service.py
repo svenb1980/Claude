@@ -1,4 +1,8 @@
-"""Vraag Claude: sends a question to the Claude API and streams the answer back.
+"""Vraag Claude: sends a question to Claude and streams the answer back.
+
+There are two ways to reach Claude. By default the app runs Claude Code on this computer, which uses
+the owner's Claude subscription, so only that one account may use it. With ASK_BACKEND=api it uses
+the Claude API and an API key instead, billed per question, and every account may use it.
 
 Conversations are not stored on the server. They live in the browser tab, and nothing about a
 question is logged. Portfolio data only goes along when the user picks it for that question, and
@@ -7,15 +11,21 @@ then only as percentages, labels and reasons: never amounts, quantities or the u
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import os
+import shutil
+import subprocess
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analysis.service import Signal, compute_signals
 from app.i18n.nl import T
+from app.models import User
 from app.settings_store import get_setting, set_setting
 
 log = logging.getLogger(__name__)
@@ -29,6 +39,15 @@ MAX_BODY_BYTES = 1024 * 1024
 MAX_TOKENS = 16000
 # Block types a finished answer can hold. They go back to the API unchanged on the next question.
 ASSISTANT_BLOCKS = {"text", "thinking", "redacted_thinking", "fallback"}
+BACKEND_CLAUDE_CODE = "claude-code"
+BACKEND_API = "api"
+CLI_TIMEOUT_SECONDS = 180
+# Claude Code can normally run commands and edit files. Here it may only write an answer: no tools,
+# no MCP servers, no skills, no settings or project files, and nothing saved between questions.
+CLI_FLAGS = [
+    "-p", "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
+    "--no-session-persistence", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+]
 
 
 class InvalidConversation(ValueError):
@@ -213,4 +232,143 @@ def stream_answer(client, model: str, system: list[dict], messages: list[dict]) 
         "content": [block.model_dump(mode="json", exclude_none=True) for block in final.content],
         "truncated": final.stop_reason == "max_tokens",
         "tokens": {"input": usage.input_tokens, "output": usage.output_tokens},
+    }
+
+
+# --- Claude Code, with the owner's subscription --------------------------------
+
+def owner_id(session: Session) -> int | None:
+    """The account whose Claude subscription this is: the oldest administrator."""
+    return session.scalar(select(User.id).where(User.is_admin.is_(True)).order_by(User.id).limit(1))
+
+
+def find_cli(configured: str = "") -> list[str] | None:
+    """How to start Claude Code, or None if it isn't installed."""
+    if configured:
+        return [configured]
+    found = shutil.which("claude")
+    if found:
+        return [found]
+    for name in ("claude.exe", "claude"):
+        candidate = Path.home() / ".local" / "bin" / name
+        if candidate.exists():
+            return [str(candidate)]
+    return None
+
+
+def cli_env() -> dict[str, str]:
+    """This process's environment, without anything that would move Claude Code off the subscription.
+
+    An API key in the environment would otherwise take priority and be billed per question.
+    """
+    return {
+        name: value for name, value in os.environ.items()
+        if name == "CLAUDE_CONFIG_DIR" or not name.upper().startswith(("ANTHROPIC", "CLAUDE"))
+    }
+
+
+def _block_text(content) -> str:
+    return "".join(block.get("text", "") for block in content if block.get("type") == "text")
+
+
+def cli_prompt(messages: list[dict], context: str | None) -> str:
+    """Claude Code gets the whole conversation as text, because no session is kept between questions."""
+    parts = []
+    if context:
+        parts.append("App data, shared by the user for this question:\n\n" + context)
+    if len(messages) > 1:
+        turns = [
+            ("User: " + m["content"]) if m["role"] == "user" else ("You: " + _block_text(m["content"]))
+            for m in messages[:-1]
+        ]
+        parts.append("Earlier in this conversation:\n\n" + "\n\n".join(turns))
+        parts.append("New question: " + messages[-1]["content"])
+    else:
+        parts.append(messages[-1]["content"])
+    return "\n\n".join(parts)
+
+
+def _cli_error_text(result: dict) -> str:
+    message = str(result.get("result", "")).lower()
+    status = result.get("api_error_status")
+    if status in (401, 403) or "authenticate" in message or "log in" in message or "login" in message:
+        return T["ask_cli_login"]
+    if status == 429 or "limit" in message:
+        return T["ask_cli_limit"]
+    return T["ask_error_service"]
+
+
+def stream_cli(
+    command: list[str], workdir: Path, model: str, skill: str, context: str | None, messages: list[dict],
+) -> Iterator[dict]:
+    """Same events as stream_answer. The question goes over stdin, so it isn't in the process list."""
+    args = [*command, *CLI_FLAGS, "--system-prompt", skill]
+    if model:
+        args += ["--model", model]
+    workdir.mkdir(parents=True, exist_ok=True)
+    try:
+        process = subprocess.Popen(
+            args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=workdir,
+            env=cli_env(), encoding="utf-8", errors="replace",
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except OSError as exc:
+        log.warning("Claude Code start niet: %s", type(exc).__name__)
+        yield {"error": T["ask_not_ready"]}
+        return
+
+    timer = threading.Timer(CLI_TIMEOUT_SECONDS, process.kill)
+    timer.start()
+    written: list[str] = []
+    result = None
+    try:
+        try:
+            process.stdin.write(cli_prompt(messages, context))
+            process.stdin.close()
+        except OSError:
+            pass  # It stopped early. What it reported is read below.
+        for line in process.stdout:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if event.get("type") == "stream_event":
+                inner = event.get("event", {})
+                delta = inner.get("delta", {})
+                if inner.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
+                    written.append(delta["text"])
+                    yield {"text": delta["text"]}
+            elif event.get("type") == "result":
+                result = event
+        process.wait()
+    finally:
+        # Also runs when the browser goes away in the middle of an answer.
+        timer.cancel()
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        process.stdout.close()
+
+    if result is None:
+        log.warning("Claude Code gaf geen resultaat, code %s", process.returncode)
+        yield {"error": T["ask_error_service"]}
+        return
+    if result.get("is_error"):
+        log.warning("Claude Code meldt een fout, status %s", result.get("api_error_status"))
+        yield {"error": _cli_error_text(result)}
+        return
+    if result.get("stop_reason") == "refusal":
+        yield {"error": T["ask_refused"]}
+        return
+    text = "".join(written)
+    if not text:
+        text = str(result.get("result") or "")
+        if not text:
+            yield {"error": T["ask_error_service"]}
+            return
+        yield {"text": text}
+    yield {
+        "done": True,
+        "content": [{"type": "text", "text": text}],
+        "truncated": result.get("stop_reason") == "max_tokens",
     }

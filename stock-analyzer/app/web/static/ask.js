@@ -220,7 +220,7 @@
         if (frame) cancelAnimationFrame(frame);
         draw();
         if (event.truncated) addMeta(wrapper, text.textTruncated);
-        addMeta(wrapper, text.textTokens.replace("{input}", event.tokens.input).replace("{output}", event.tokens.output));
+        if (event.tokens) addMeta(wrapper, text.textTokens.replace("{input}", event.tokens.input).replace("{output}", event.tokens.output));
       }
     };
 

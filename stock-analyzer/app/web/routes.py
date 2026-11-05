@@ -444,12 +444,25 @@ def stock_page(request: Request, isin: str):
 
 # --- Vraag Claude -----------------------------------------------------------
 
-def _ask_client(request: Request):
-    """The Claude client, or None while no API key is set."""
+def _ask_backend(request: Request) -> str | None:
+    """Which way to reach Claude, or None while it isn't set up."""
     state = request.app.state
-    if state.ask_client is None and ask.has_credentials():
+    if state.ask_client is not None:
+        return ask.BACKEND_API
+    if state.config.ask_backend == ask.BACKEND_API:
+        if not ask.has_credentials():
+            return None
         state.ask_client = ask.make_client()
-    return state.ask_client
+        return ask.BACKEND_API
+    return ask.BACKEND_CLAUDE_CODE if ask.find_cli(state.config.ask_cli_path) else None
+
+
+def _ask_allowed(request: Request, backend: str | None) -> bool:
+    """A subscription is personal, so only its owner may use it through this app."""
+    if backend != ask.BACKEND_CLAUDE_CODE:
+        return True
+    with session_scope(_factory(request)) as session:
+        return ask.owner_id(session) == _user(request).id
 
 
 @router.get("/ask", response_class=HTMLResponse)
@@ -461,9 +474,11 @@ def ask_page(request: Request, scope: str = ask.SCOPE_NONE):
     if scope not in {ask.SCOPE_NONE, ask.SCOPE_PORTFOLIO, *(isin for isin, _ in options)}:
         scope = ask.SCOPE_NONE
     config = request.app.state.config
+    backend = _ask_backend(request)
     return _render(
         request, "ask.html",
-        ready=_ask_client(request) is not None, options=options, scope=scope, portfolio_id=portfolio_id,
+        ready=backend is not None, allowed=_ask_allowed(request, backend), options=options, scope=scope,
+        portfolio_id=portfolio_id, subscription=backend == ask.BACKEND_CLAUDE_CODE,
         scope_none=ask.SCOPE_NONE, scope_portfolio=ask.SCOPE_PORTFOLIO,
         max_chars=ask.MAX_QUESTION_CHARS, max_messages=ask.MAX_MESSAGES, daily_limit=config.ask_daily_limit,
     )
@@ -489,9 +504,11 @@ def _prepare_question(request: Request, scope: str) -> tuple[bool, str | None]:
 
 @router.post("/api/ask")
 async def ask_question(request: Request):
-    client = _ask_client(request)
-    if client is None:
+    backend = _ask_backend(request)
+    if backend is None:
         return JSONResponse({"error": T["ask_not_ready_title"]}, status_code=503)
+    if not await run_in_threadpool(_ask_allowed, request, backend):
+        return JSONResponse({"error": T["ask_owner_only"]}, status_code=403)
     body = await request.body()
     if len(body) > ask.MAX_BODY_BYTES:
         return JSONResponse({"error": T["ask_error_conversation"]}, status_code=413)
@@ -505,11 +522,18 @@ async def ask_question(request: Request):
     if not allowed:
         limit = request.app.state.config.ask_daily_limit
         return JSONResponse({"error": T["ask_limit"].format(limit=limit)}, status_code=429)
-    system = ask.build_system(ask.load_skill(), context)
-    model = request.app.state.config.ask_model
+    config = request.app.state.config
+    skill = ask.load_skill()
+    if backend == ask.BACKEND_API:
+        events = ask.stream_answer(request.app.state.ask_client, config.ask_model, ask.build_system(skill, context), messages)
+    else:
+        events = ask.stream_cli(
+            ask.find_cli(config.ask_cli_path) or [], config.data_dir / "ask-workdir", config.ask_cli_model,
+            skill, context, messages,
+        )
 
     def lines():
-        for event in ask.stream_answer(client, model, system, messages):
+        for event in events:
             yield json.dumps(event, ensure_ascii=False) + "\n"
 
     return StreamingResponse(lines(), media_type="application/x-ndjson")

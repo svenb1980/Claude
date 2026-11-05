@@ -15,6 +15,9 @@ class Config:
     market_provider: str
     scheduler_enabled: bool
     screener_batch: int
+    ask_backend: str = "claude-code"
+    ask_cli_path: str = ""
+    ask_cli_model: str = ""
     ask_model: str = "claude-opus-5-5"
     ask_daily_limit: int = 50
 
@@ -43,6 +46,9 @@ def load_config() -> Config:
         market_provider=os.environ.get("MARKET_PROVIDER", "yfinance"),
         scheduler_enabled=os.environ.get("SCHEDULER_ENABLED", "1") == "1",
         screener_batch=int(os.environ.get("SCREENER_BATCH", "200")),
+        ask_backend=os.environ.get("ASK_BACKEND", "claude-code"),
+        ask_cli_path=os.environ.get("ASK_CLI_PATH", ""),
+        ask_cli_model=os.environ.get("ASK_CLI_MODEL", ""),
         ask_model=os.environ.get("ASK_MODEL", "claude-opus-5-5"),
         ask_daily_limit=int(os.environ.get("ASK_DAILY_LIMIT", "50")),
     )

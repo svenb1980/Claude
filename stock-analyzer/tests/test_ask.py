@@ -1,9 +1,13 @@
-"""Vraag Claude, with a stand-in for the Claude API. No test here calls the real service."""
+"""Vraag Claude, with stand-ins for the Claude API and Claude Code. No test calls the real service."""
 from __future__ import annotations
 
 import dataclasses
 import json
+import os
+import subprocess
+import sys
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -153,7 +157,7 @@ def test_earlier_answers_go_back_unchanged():
 def test_page_without_a_key_explains_the_setup(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
-    with _app_client(tmp_path, None) as c:
+    with _app_client(tmp_path, None, ask_backend="api") as c:
         _setup(c)
         page = c.get("/ask")
         assert page.status_code == 200
@@ -330,3 +334,211 @@ def test_stock_page_links_to_the_question_page(client):
 def test_unknown_scope_in_the_address_falls_back_to_nothing(client):
     page = client.get("/ask", params={"scope": "NL9999999999"}).text
     assert '<option value="none" selected>' in page
+
+
+# --- Claude Code, with the owner's subscription -----------------------------------
+
+FAKE_CLI = r"""
+import json, os, sys
+from pathlib import Path
+out = Path(os.environ["FAKE_CLI_LOG"])
+out.write_text(json.dumps({"args": sys.argv[1:], "cwd": os.getcwd(), "stdin": sys.stdin.read(),
+                           "env": sorted(os.environ)}), encoding="utf-8")
+mode = os.environ.get("FAKE_CLI_MODE", "ok")
+def emit(value):
+    print(json.dumps(value), flush=True)
+emit({"type": "system", "subtype": "init", "tools": []})
+if mode == "crash":
+    sys.exit(3)
+if mode == "auth":
+    emit({"type": "result", "is_error": True, "api_error_status": 401, "result": "Failed to authenticate"})
+    sys.exit(1)
+if mode == "limit":
+    emit({"type": "result", "is_error": True, "result": "Claude usage limit reached"})
+    sys.exit(1)
+if mode == "garbage":
+    print("geen json", flush=True)
+for part in ["Een ", "antwoord"]:
+    if mode != "nodeltas":
+        emit({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": part}}})
+emit({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "thinking_delta", "thinking": "geheim"}}})
+emit({"type": "result", "is_error": False, "result": "Een antwoord",
+      "stop_reason": "max_tokens" if mode == "cut" else "end_turn"})
+"""
+
+
+@pytest.fixture()
+def cli(tmp_path, monkeypatch):
+    script = tmp_path / "fake_claude.py"
+    script.write_text(FAKE_CLI, encoding="utf-8")
+    calls = tmp_path / "cli_call.json"
+    monkeypatch.setenv("FAKE_CLI_LOG", str(calls))
+    monkeypatch.setattr(ask, "find_cli", lambda configured="": [sys.executable, str(script)])
+    return lambda: json.loads(calls.read_text(encoding="utf-8"))
+
+
+@pytest.fixture()
+def cli_client(tmp_path, cli):
+    with _app_client(tmp_path, None) as c:
+        _setup(c)
+        yield c
+
+
+def test_subscription_answer_streams_through_the_app(cli_client, cli):
+    events = _events(cli_client.post("/api/ask", json={"messages": QUESTION}))
+    assert [e["text"] for e in events if "text" in e] == ["Een ", "antwoord"]
+    assert events[-1]["done"]
+    assert events[-1]["content"] == [{"type": "text", "text": "Een antwoord"}]
+    assert not events[-1]["truncated"]
+    assert "geheim" not in json.dumps(events)
+
+
+def test_claude_code_can_only_write_an_answer(cli_client, cli, tmp_path):
+    cli_client.post("/api/ask", json={"messages": QUESTION})
+    call = cli()
+    args = call["args"]
+    assert args[args.index("--tools") + 1] == ""
+    assert args[args.index("--setting-sources") + 1] == ""
+    for flag in ("-p", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"):
+        assert flag in args
+    assert "--dangerously-skip-permissions" not in args
+    assert args[args.index("--system-prompt") + 1].startswith("# Beurs-expert")
+    assert Path(call["cwd"]).name == "ask-workdir"
+    assert list(Path(call["cwd"]).iterdir()) == []
+
+
+def test_question_goes_over_stdin_and_not_in_the_arguments(cli_client, cli):
+    cli_client.post("/api/ask", json={"messages": [{"role": "user", "content": "uniekevraagtekst"}]})
+    call = cli()
+    assert call["stdin"] == "uniekevraagtekst"
+    assert "uniekevraagtekst" not in json.dumps(call["args"])
+
+
+def test_api_keys_do_not_reach_claude_code(cli_client, cli, monkeypatch):
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDECODE"):
+        monkeypatch.setenv(name, "test-waarde")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "bewaard")
+    cli_client.post("/api/ask", json={"messages": QUESTION})
+    names = {name.upper() for name in cli()["env"]}
+    assert not {n for n in names if n.startswith("ANTHROPIC")}
+    assert {n for n in names if n.startswith("CLAUDE")} == {"CLAUDE_CONFIG_DIR"}
+
+
+def test_follow_up_sends_the_conversation_as_text(cli_client, cli):
+    messages = [
+        {"role": "user", "content": "eerste vraag"},
+        {"role": "assistant", "content": [{"type": "text", "text": "eerste antwoord"}]},
+        {"role": "user", "content": "tweede vraag"},
+    ]
+    cli_client.post("/api/ask", json={"messages": messages})
+    stdin = cli()["stdin"]
+    assert stdin.index("eerste vraag") < stdin.index("eerste antwoord") < stdin.index("tweede vraag")
+
+
+def test_shared_data_reaches_claude_code_by_choice_only(cli_client, cli):
+    _import(cli_client)
+    cli_client.post("/api/ask", json={"messages": QUESTION})
+    assert "ACME" not in json.dumps(cli())
+    cli_client.post("/api/ask", json={"messages": QUESTION, "scope": ISIN_NL})
+    call = cli()
+    assert "ACME NV" in call["stdin"]
+    assert "ACME" not in json.dumps(call["args"])
+
+
+def test_only_the_owner_can_use_the_subscription(cli_client, cli):
+    cli_client.post("/users", data={"username": OTHER[0], "password": OTHER[1]})
+    assert 'id="ask-form"' in cli_client.get("/ask").text
+    cli_client.post("/logout")
+    cli_client.post("/login", data={"username": OTHER[0], "password": OTHER[1]})
+    page = cli_client.get("/ask")
+    assert 'id="ask-form"' not in page.text
+    assert "alleen" in page.text
+    response = cli_client.post("/api/ask", json={"messages": QUESTION})
+    assert response.status_code == 403
+    assert not (Path(os.environ["FAKE_CLI_LOG"])).exists()
+
+
+def test_second_admin_is_not_the_owner(cli_client, cli):
+    cli_client.post("/users", data={"username": OTHER[0], "password": OTHER[1], "is_admin": "1"})
+    cli_client.post("/logout")
+    cli_client.post("/login", data={"username": OTHER[0], "password": OTHER[1]})
+    assert cli_client.post("/api/ask", json={"messages": QUESTION}).status_code == 403
+
+
+def test_api_backend_stays_open_to_every_account(client, claude):
+    client.post("/users", data={"username": OTHER[0], "password": OTHER[1]})
+    client.post("/logout")
+    client.post("/login", data={"username": OTHER[0], "password": OTHER[1]})
+    assert client.post("/api/ask", json={"messages": QUESTION}).status_code == 200
+
+
+def test_missing_claude_code_explains_the_setup(tmp_path, monkeypatch):
+    monkeypatch.setattr(ask, "find_cli", lambda configured="": None)
+    with _app_client(tmp_path, None) as c:
+        _setup(c)
+        page = c.get("/ask")
+        assert "claude auth login" in page.text
+        assert c.post("/api/ask", json={"messages": QUESTION}).status_code == 503
+
+
+def test_program_that_cannot_start_gives_a_message(tmp_path):
+    question = [{"role": "user", "content": "x"}]
+    events = list(ask.stream_cli([str(tmp_path / "bestaat-niet")], tmp_path / "w", "", "s", None, question))
+    assert "error" in events[-1]
+
+
+@pytest.mark.parametrize("mode, expected", [
+    ("auth", "claude auth login"), ("limit", "limiet"), ("crash", "niet bereikbaar"),
+])
+def test_claude_code_failures_become_clear_messages(cli_client, cli, monkeypatch, mode, expected):
+    monkeypatch.setenv("FAKE_CLI_MODE", mode)
+    event = _events(cli_client.post("/api/ask", json={"messages": QUESTION}))[-1]
+    assert expected in event["error"]
+
+
+def test_answer_without_streaming_parts_still_arrives(cli_client, cli, monkeypatch):
+    monkeypatch.setenv("FAKE_CLI_MODE", "nodeltas")
+    events = _events(cli_client.post("/api/ask", json={"messages": QUESTION}))
+    assert events[0] == {"text": "Een antwoord"}
+    assert events[-1]["done"]
+
+
+def test_cut_off_and_stray_output_are_handled(cli_client, cli, monkeypatch):
+    monkeypatch.setenv("FAKE_CLI_MODE", "cut")
+    assert _events(cli_client.post("/api/ask", json={"messages": QUESTION}))[-1]["truncated"]
+    monkeypatch.setenv("FAKE_CLI_MODE", "garbage")
+    assert _events(cli_client.post("/api/ask", json={"messages": QUESTION}))[-1]["done"]
+
+
+def test_hanging_claude_code_is_stopped(tmp_path, monkeypatch):
+    monkeypatch.setattr(ask, "CLI_TIMEOUT_SECONDS", 0.5)
+    script = tmp_path / "hang.py"
+    script.write_text("import sys, time\nsys.stdin.read()\ntime.sleep(60)\n", encoding="utf-8")
+    question = [{"role": "user", "content": "x"}]
+    started = time.monotonic()
+    events = list(ask.stream_cli([sys.executable, str(script)], tmp_path / "w", "", "s", None, question))
+    assert time.monotonic() - started < 20
+    assert "error" in events[-1]
+
+
+def test_leaving_in_the_middle_stops_claude_code(tmp_path, monkeypatch):
+    started = []
+    real_popen = subprocess.Popen
+
+    def recording(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        started.append(process)
+        return process
+
+    monkeypatch.setattr(ask.subprocess, "Popen", recording)
+    script = tmp_path / "slow.py"
+    script.write_text(
+        "import json, sys, time\nsys.stdin.read()\n"
+        "print(json.dumps({'type': 'stream_event', 'event': {'type': 'content_block_delta', "
+        "'delta': {'type': 'text_delta', 'text': 'a'}}}), flush=True)\ntime.sleep(60)\n",
+        encoding="utf-8",
+    )
+    events = ask.stream_cli([sys.executable, str(script)], tmp_path / "w", "", "s", None, [{"role": "user", "content": "x"}])
+    assert next(events) == {"text": "a"}
+    events.close()
+    assert started[0].poll() is not None

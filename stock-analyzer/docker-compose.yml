@@ -10,6 +10,7 @@ services:
     environment:
       SCREENER_BATCH: "${SCREENER_BATCH:-200}"
       REFRESH_HOUR: "${REFRESH_HOUR:-6}"
+      ASK_BACKEND: "${ASK_BACKEND:-claude-code}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       ASK_MODEL: "${ASK_MODEL:-claude-opus-5-5}"
       ASK_DAILY_LIMIT: "${ASK_DAILY_LIMIT:-50}"

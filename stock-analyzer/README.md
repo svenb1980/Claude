@@ -112,14 +112,26 @@ instructions are the skill in `app/ask/skills/beurs-expert/SKILL.md`, which you 
 other text file. It lays out the arguments on buying or selling but doesn't tell you what to do:
 Claude is not a licensed adviser and doesn't know your full situation.
 
-**Setting it up.** Create a key at [platform.claude.com](https://platform.claude.com) and set it as
-`ANTHROPIC_API_KEY` for the container, then restart. API use is billed per question, separately from
-a Claude subscription. The default model, `claude-opus-5-5`, costs $4 per million input tokens and
-$20 per million output tokens at the time of writing. Change it with `ASK_MODEL`, and limit
-questions per user per day with `ASK_DAILY_LIMIT`. The key is shared, so its owner pays for every user.
+**Setting it up.** By default it runs Claude Code on the same computer as the app, using your Claude
+subscription, so there is no API key and no charge per question. Questions count towards your plan's
+limits. Install Claude Code, run `claude auth login` once, and start the app outside Docker.
 
-Don't keep the key in a `.env` file in this OneDrive folder. Set it in your shell before
-`docker compose up`, or keep the compose project elsewhere on the machine that runs it.
+- **Only for you.** A subscription is personal, so only the oldest administrator account can use the
+  page. Anthropic's terms don't allow routing plan credentials on behalf of other users, and they
+  don't mention a private app used by its owner. Anthropic says it can enforce its rules without notice.
+- **Locked down.** Each question starts Claude Code with no tools, MCP servers, skills or settings, in
+  an empty folder, and it saves no session. It can only write an answer. API keys in the app's
+  environment are not passed on, so a question can't end up billed to a key by accident.
+- **Options.** `ASK_CLI_PATH` points to the program if it isn't found, `ASK_CLI_MODEL` picks a model
+  (default: your plan's), and `ASK_DAILY_LIMIT` limits questions per day.
+- **Docker and the Raspberry Pi.** The image doesn't include Claude Code, so the page shows setup
+  instructions there. Adding it isn't built or tested yet.
+
+**With an API key instead.** Set `ASK_BACKEND=api` and `ANTHROPIC_API_KEY`, and every account can use
+the page, also in Docker. Each question is billed to the key, separately from a subscription, and its
+owner pays for all users. The default model, `claude-opus-5-5`, costs $4 per million input tokens and
+$20 per million output tokens at the time of writing. Change it with `ASK_MODEL`. Don't keep the key in
+a `.env` file in this OneDrive folder.
 
 **What leaves your machine.** Every question goes to Anthropic. Nothing from your portfolio goes along
 unless you pick it for that question, and the page shows the exact text first. A shared stock or

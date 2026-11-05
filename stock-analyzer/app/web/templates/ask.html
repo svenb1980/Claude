@@ -9,6 +9,10 @@
   <h2>{{ t.ask_not_ready_title }}</h2>
   <p>{{ t.ask_not_ready }}</p>
 </section>
+{% elif not allowed %}
+<section class="card ask-card">
+  <p>{{ t.ask_owner_only }}</p>
+</section>
 {% else %}
 <section class="card ask-card" id="ask"
          data-store="ask:{{ user.id }}:{{ portfolio_id }}"
@@ -51,7 +55,7 @@
     <pre id="ask-preview-text"></pre>
   </details>
 </section>
-<p class="muted small ask-card">{{ t.ask_privacy }}</p>
+<p class="muted small ask-card">{{ t.ask_privacy }}{% if subscription %} {{ t.ask_subscription }}{% endif %}</p>
 <script src="/static/ask.js"></script>
 {% endif %}
 {% endblock %}
