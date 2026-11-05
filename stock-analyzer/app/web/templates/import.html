@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ t.imp_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<h1>{{ t.imp_title }}</h1>
+<p class="lead">{{ t.imp_intro }} <span class="muted">{{ t.imp_stored_where }}</span></p>
+
+{% if done is not none %}<p class="notice notice-ok" role="status">{{ t.imp_done.format(n=done) }}</p>{% endif %}
+{% if error %}<p class="notice notice-error" role="alert"><strong>{{ t.imp_error_title }}:</strong> {{ error }}</p>{% endif %}
+
+{% if preview %}
+<section class="card">
+  <h2>{{ t.imp_preview }}</h2>
+  <dl class="metrics">
+    <dt>{{ t.imp_type }}</dt><dd>{{ t.imp_type_transactions if preview.kind == "transactions" else t.imp_type_account }}</dd>
+    <dt>{{ t.imp_rows }}</dt><dd>{{ preview.rows }}</dd>
+    <dt>{{ t.imp_new }}</dt><dd><strong>{{ preview.new }}</strong></dd>
+    <dt>{{ t.imp_dupes }}</dt><dd>{{ preview.duplicates }}</dd>
+    <dt>{{ t.imp_period }}</dt><dd>{{ preview.first | nldate }} t/m {{ preview.last | nldate }}</dd>
+  </dl>
+
+  {% if preview.kinds %}
+  <h3>{{ t.imp_kinds }}</h3>
+  <ul class="inline-list">{% for kind, count in preview.kinds %}<li>{{ t["kind_" ~ kind] }}: {{ count }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% if preview.bad_count %}
+  <h3>{{ t.imp_bad }} ({{ preview.bad_count }})</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{ t.imp_line }}</th><th>{{ t.imp_reason }}</th><th>{{ t.imp_content }}</th></tr></thead>
+    <tbody>{% for row in preview.bad_rows %}<tr><td>{{ row.line }}</td><td>{{ row.reason }}</td><td class="small mono">{{ row.text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+
+  {% if preview.unrecognised %}
+  <h3>{{ t.imp_unrecognised }}</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{ t.imp_description }}</th><th class="num">{{ t.bt_col_count }}</th></tr></thead>
+    <tbody>{% for text, count in preview.unrecognised %}<tr><td>{{ text }}</td><td class="num">{{ count }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+
+  <div class="actions">
+    <form method="post" action="/import/confirm"><input type="hidden" name="token" value="{{ preview.token }}"><button class="primary">{{ t.imp_confirm }}</button></form>
+    <form method="post" action="/import/cancel"><input type="hidden" name="token" value="{{ preview.token }}"><button>{{ t.imp_cancel }}</button></form>
+  </div>
+</section>
+{% else %}
+<section class="card">
+  <form method="post" action="/import" enctype="multipart/form-data" class="stack">
+    <label>{{ t.imp_file }}<input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button class="primary">{{ t.imp_upload }}</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>{{ t.imp_status }}</h2>
+  <dl class="metrics">
+    <dt>{{ t.imp_type_transactions }}</dt>
+    <dd>{% if status.tx_count %}{{ t.imp_status_line.format(n=status.tx_count, first=status.tx_first | nldate, last=status.tx_last | nldate) }}{% else %}{{ t.imp_none_yet }}{% endif %}</dd>
+    <dt>{{ t.imp_type_account }}</dt>
+    <dd>{% if status.ac_count %}{{ t.imp_status_line.format(n=status.ac_count, first=status.ac_first | nldate, last=status.ac_last | nldate) }}{% else %}{{ t.imp_none_yet }}{% endif %}</dd>
+  </dl>
+</section>
+{% endblock %}

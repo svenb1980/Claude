@@ -15,6 +15,7 @@ This is a scratch/personal project directory containing three standalone files:
 | `planon-leave-approver/` | Chrome extension (MV3) for Planon Self-Service "Requests to approve" (`*.planoncloud.com/case/*`). Adds a panel that opens each leave request, checks `# Hours` against From/Till (workday 08:30–17:00, 0.5h break 12:30–13:00, weekends skipped) and bulk-approves only matching requests. Dutch UI; see `LEESMIJ.md` |
 | `website-hoefsmid/` | Dutch static website (HTML/CSS/JS, no build) about the dream job of farrier (hoefsmid). Pages are listed in `js/menu.js`; `informatie-hoefsmid.pdf` is a generated PDF of all pages. Master copy lives in the claude.ai project files; this folder is a mirror pushed after every change |
 | `toilet-display.yaml` | ESPHome config for an ESP32 + Waveshare 1.54" e-ink toilet occupancy display |
+| `stock-analyzer/` | Self-hosted DEGIRO portfolio analyzer (Python/FastAPI, SQLite, Docker; Dutch UI). Imports CSV exports, scores holdings with transparent rules, backtests them and shows a dividend calendar. Keep real exports and the database out of this repo and its OneDrive folder; see its `README.md` |
 
 ## Git Workflow
 

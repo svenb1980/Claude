@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ t.dash_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ t.dash_title }}</h1>
+  <form method="post" action="/refresh" class="refresh">
+    <span class="muted">
+      {% if status.get("running") %}{{ t.dash_refreshing }}
+      {% elif status.get("finished") %}{{ t.dash_last_refresh.format(when=status.finished | nldatetime) }}
+        {% if status.get("failed") %}{{ t.dash_refresh_failed.format(failed=status.failed, total=status.total) }}{% endif %}
+      {% endif %}
+    </span>
+    <button {% if status.get("running") %}disabled{% endif %}>{{ t.dash_refresh }}</button>
+  </form>
+</div>
+
+{% if not portfolio.positions %}
+<section class="card empty">
+  <h2>{{ t.dash_empty_title }}</h2>
+  <p>{{ t.dash_empty_body }}</p>
+  <a class="button primary" href="/import">{{ t.dash_go_import }}</a>
+</section>
+{% else %}
+<section class="tiles">
+  <div class="tile tile-hero"><span class="tile-label">{{ t.dash_value }}</span><strong>{{ portfolio.value_eur | eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.dash_unrealised }}</span><strong>{{ portfolio.unrealised_eur | signed_eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.dash_realised }}</span><strong>{{ portfolio.realised_eur | signed_eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.dash_dividends }}</span><strong>{{ portfolio.dividends_eur | eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.dash_fees }}</span><strong>{{ portfolio.fees_eur | eur }}</strong></div>
+</section>
+{% if portfolio.unpriced %}<p class="notice">{{ t.dash_unpriced.format(n=portfolio.unpriced) }}</p>{% endif %}
+
+<section class="card">
+  <h2>{{ t.dash_positions }}</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>{{ t.col_product }}</th><th class="num">{{ t.col_qty }}</th><th class="num">{{ t.col_value }}</th>
+      <th class="num">{{ t.col_cost }}</th><th class="num">{{ t.col_result }}</th><th class="num">{{ t.col_result_pct }}</th>
+      <th class="num">{{ t.col_weight }}</th><th>{{ t.col_signal }}</th>
+    </tr></thead>
+    <tbody>
+    {% for p in portfolio.positions %}
+      <tr>
+        <td><a href="/stocks/{{ p.isin }}">{{ p.name }}</a><div class="muted small">{{ p.ticker or p.isin }}</div></td>
+        <td class="num">{{ p.quantity | quantity }}</td>
+        <td class="num">{{ p.value_eur | eur }}</td>
+        <td class="num">{{ p.cost_eur | eur }}</td>
+        <td class="num {{ m.signed_class(p.unrealised_eur) }}">{{ p.unrealised_eur | signed_eur }}</td>
+        <td class="num {{ m.signed_class(p.unrealised_pct) }}">{{ p.unrealised_pct | pct }}</td>
+        <td class="num">{{ p.weight_pct | pct }}</td>
+        <td>{{ m.signal_badge(signals[p.isin].result.label) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<div class="columns">
+  <section class="card">
+    <h2>{{ t.dash_allocation_sector }}</h2>
+    {% for name, share in allocation %}
+    <div class="hbar-row">
+      <span class="hbar-label">{{ name }}</span>
+      <span class="hbar-track"><span class="hbar-fill" style="width: {{ '%.2f' | format(share) }}%"></span></span>
+      <span class="hbar-value">{{ share | pct }}</span>
+    </div>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>{{ t.dash_next_dividends }}</h2>
+    {% if upcoming %}
+    <table>
+      <thead><tr><th>{{ t.col_pay_date }}</th><th>{{ t.col_product }}</th><th class="num">{{ t.col_gross }}</th><th>{{ t.col_status }}</th></tr></thead>
+      <tbody>
+      {% for item in upcoming %}
+        <tr><td>{{ item.pay_date | nldate }}</td><td>{{ item.name }}</td><td class="num">{{ item.gross_eur | eur }}</td><td>{{ m.dividend_status(item) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">{{ t.dash_no_next_dividends }}</p>{% endif %}
+  </section>
+</div>
+
+{% if portfolio.warnings %}
+<section class="card">
+  <h2>{{ t.dash_warnings }}</h2>
+  <ul>{% for warning in portfolio.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

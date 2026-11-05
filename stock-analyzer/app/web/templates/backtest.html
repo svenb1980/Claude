@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ t.bt_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ t.bt_title }}</h1>
+  <form method="post" action="/backtest/run"><button class="primary" {% if running %}disabled{% endif %}>{{ t.bt_run }}</button></form>
+</div>
+<p class="lead">{{ t.bt_intro }}</p>
+{% if running %}<p class="notice" role="status">{{ t.bt_running }}</p>{% endif %}
+
+{% set result = backtest.get("result") if backtest else none %}
+{% if backtest and backtest.get("state") == "failed" %}
+<p class="notice notice-error" role="alert">{{ t.bt_failed.format(error=backtest.error) }}</p>
+{% elif backtest and not result %}
+<p class="notice">{{ t.bt_no_data }}</p>
+{% elif not backtest and not running %}
+<section class="card empty"><p>{{ t.bt_none }}</p></section>
+{% endif %}
+
+{% if result %}
+<p class="muted">{{ t.bt_period.format(start=result.start | nldate, end=result.end | nldate, months=result.months, tickers=result.tickers, cost=result.cost_pct | number(1)) }}</p>
+
+<section class="card">
+  <h2>{{ t.bt_chart_title }}</h2>
+  <div class="line-chart" data-chart='{{ {"points": result.curve, "dateKey": "date", "series": [{"key": "strategy", "label": t.bt_series_strategy, "slot": 1}, {"key": "hold", "label": t.bt_series_hold, "slot": 2}, {"key": "benchmark", "label": t.bt_series_benchmark, "slot": 3}]} | tojson }}'></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ t.bt_col_series }}</th><th class="num">{{ t.bt_stat_total }}</th><th class="num">{{ t.bt_stat_cagr }}</th><th class="num">{{ t.bt_stat_maxdd }}</th><th class="num">{{ t.bt_stat_vol }}</th></tr></thead>
+    <tbody>
+    {% for key, label in [("strategy", t.bt_series_strategy), ("hold", t.bt_series_hold), ("benchmark", t.bt_series_benchmark)] %}
+      {% set stats = result.stats[key] %}
+      {% if stats %}
+      <tr><td>{{ label }}</td><td class="num">{{ stats.total | signed_ratio_pct }}</td><td class="num">{{ stats.cagr | signed_ratio_pct }}</td><td class="num">{{ stats.max_dd | ratio_pct }}</td><td class="num">{{ stats.vol | ratio_pct }}</td></tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>{{ t.bt_by_label }}</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ t.bt_col_label }}</th><th class="num">{{ t.bt_col_count }}</th><th class="num">{{ t.bt_col_avg_1m }}</th><th class="num">{{ t.bt_col_avg_3m }}</th><th class="num">{{ t.bt_col_hit }}</th></tr></thead>
+    <tbody>
+    {% for key in ["buy", "hold", "sell"] %}
+      {% set row = result.labels[key] %}
+      <tr><td>{{ m.signal_badge(key) }}</td><td class="num">{{ row.count }}</td><td class="num">{{ row.avg_1m | signed_ratio_pct }}</td><td class="num">{{ row.avg_3m | signed_ratio_pct }}</td><td class="num">{{ row.hit_rate | ratio_pct(0) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>{{ t.bt_limits_title }}</h2>
+  <ul>{% for line in t.bt_limits %}<li>{{ line }}</li>{% endfor %}</ul>
+</section>
+{% endblock %}

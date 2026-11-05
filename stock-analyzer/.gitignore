@@ -1,0 +1,19 @@
+# Financial data must never reach Git or OneDrive
+*.csv
+*.xls
+*.xlsx
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+uploads/
+.env
+secret.key
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/

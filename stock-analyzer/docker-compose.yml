@@ -1,0 +1,19 @@
+services:
+  stock-analyzer:
+    build: .
+    image: stock-analyzer:latest
+    container_name: stock-analyzer
+    restart: unless-stopped
+    ports:
+      # Only reachable from this PC by default. See README before changing this.
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-8000}:8000"
+    environment:
+      PORTFOLIO_PASSWORD: "${PORTFOLIO_PASSWORD:-}"
+      REFRESH_HOUR: "${REFRESH_HOUR:-6}"
+      TZ: "${TZ:-Europe/Amsterdam}"
+    volumes:
+      # Named volume on purpose: keeps financial data out of this OneDrive folder.
+      - stock_data:/data
+
+volumes:
+  stock_data:

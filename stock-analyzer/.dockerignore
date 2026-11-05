@@ -1,0 +1,15 @@
+.git
+.env
+*.csv
+*.xls
+*.xlsx
+*.db
+*.sqlite
+*.sqlite3
+data/
+tests/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+README.md

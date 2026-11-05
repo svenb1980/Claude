@@ -1,0 +1,17 @@
+{% macro signal_badge(label) %}
+<span class="badge badge-{{ label }}"><span class="badge-icon" aria-hidden="true">{% if label == "sell" %}▼{% elif label == "buy" %}▲{% elif label == "hold" %}■{% else %}?{% endif %}</span>{{ t["signal_" ~ label] }}</span>
+{% endmacro %}
+
+{% macro signed_class(value) %}{% if value is none %}{% elif value > 0 %}pos{% elif value < 0 %}neg{% endif %}{% endmacro %}
+
+{% macro dividend_status(item) %}
+{% if item.status == "confirmed" %}<span class="tag tag-confirmed">✓ {{ t.div_status_confirmed }}</span>
+{% elif item.status == "date_confirmed" %}<span class="tag tag-partial">◐ {{ t.div_status_date_confirmed }}</span>
+{% else %}<span class="tag tag-estimated">~ {{ t.div_status_estimated }}</span>{% endif %}
+{% endmacro %}
+
+{% macro pay_basis(item) %}
+{% if item.pay_basis == "confirmed" %}{{ t.div_pay_confirmed }}
+{% elif item.pay_basis == "history" %}{{ t.div_pay_history }}
+{% else %}{{ t.div_pay_default.format(days=21) }}{% endif %}
+{% endmacro %}

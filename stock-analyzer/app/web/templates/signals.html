@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ t.signals_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<h1>{{ t.signals_title }}</h1>
+<p class="lead">{{ t.signals_intro }}
+  <span class="muted">{{ t.signals_thresholds.format(sell=analysis.sell_below, buy=analysis.buy_from, maxpos=analysis.max_position_pct) }}</span></p>
+{% if not signals %}
+<section class="card empty"><p>{{ t.signals_empty }}</p><a class="button primary" href="/import">{{ t.dash_go_import }}</a></section>
+{% else %}
+<section class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>{{ t.col_product }}</th><th>{{ t.col_signal }}</th><th class="num">{{ t.col_score }}</th>
+      <th class="num">{{ t.col_confidence }}</th><th>{{ t.signals_top_reason }}</th><th class="num">{{ t.col_weight }}</th>
+    </tr></thead>
+    <tbody>
+    {% for s in signals %}
+    <tr>
+      <td><a href="/stocks/{{ s.position.isin }}">{{ s.position.name }}</a><div class="muted small">{{ s.position.ticker or s.position.isin }}</div></td>
+      <td>{{ m.signal_badge(s.result.label) }}</td>
+      <td class="num">{{ s.result.total | number(0) }}</td>
+      <td class="num">{{ s.result.confidence | pct(0) }}</td>
+      <td class="small">{{ s.result.notes[0] if s.result.notes else (s.result.top_reason or t.none) }}</td>
+      <td class="num">{{ s.position.weight_pct | pct }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

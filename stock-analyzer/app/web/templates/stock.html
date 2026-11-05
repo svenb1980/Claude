@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ position.name }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<p><a href="/signals">← {{ t.stock_back }}</a></p>
+<div class="page-head">
+  <div>
+    <h1>{{ position.name }}</h1>
+    <p class="muted">{{ position.ticker or t.none }} · {{ position.isin }}{% if position.sector %} · {{ position.sector }}{% endif %}</p>
+  </div>
+  <div class="headline-signal">
+    {{ m.signal_badge(result.label) }}
+    <div class="muted small">{{ t.col_score }} {{ result.total | number(0) }} · {{ t.col_confidence }} {{ result.confidence | pct(0) }}</div>
+  </div>
+</div>
+
+{% for note in result.notes %}<p class="notice">{{ note }}</p>{% endfor %}
+{% if position.refresh_error or position.warnings %}
+<section class="notice">
+  <strong>{{ t.stock_warnings }}</strong>
+  <ul>
+    {% if position.refresh_error %}<li>{{ position.refresh_error }}</li>{% endif %}
+    {% for warning in position.warnings %}<li>{{ warning }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="tiles">
+  <div class="tile"><span class="tile-label">{{ t.col_value }}</span><strong>{{ position.value_eur | eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.col_qty }}</span><strong>{{ position.quantity | quantity }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.col_cost }}</span><strong>{{ position.cost_eur | eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.col_result }}</span><strong>{{ position.unrealised_eur | signed_eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.col_weight }}</span><strong>{{ position.weight_pct | pct }}</strong></div>
+</section>
+
+<section class="card">
+  <h2>{{ t.stock_price_chart }}{% if position.currency %} ({{ position.currency }}){% endif %}</h2>
+  {% if chart %}
+  <div class="line-chart" data-chart='{{ {"points": chart, "series": [{"key": "p", "label": t.stock_chart_price, "slot": 1}, {"key": "s", "label": t.stock_chart_sma, "slot": 2}]} | tojson }}'></div>
+  <details class="table-view">
+    <summary>{{ t.stock_chart_table }}</summary>
+    <table><thead><tr><th>{{ t.col_date }}</th><th class="num">{{ t.col_price }}</th></tr></thead>
+      <tbody>{% for row in table %}<tr><td>{{ row.date | nldate }}</td><td class="num">{{ row.close | number }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+  {% else %}<p class="muted">{{ t.stock_no_prices }}</p>{% endif %}
+</section>
+
+<div class="columns">
+  <section class="card">
+    <h2>{{ t.stock_breakdown }}</h2>
+    {% for factor in result.factors %}
+    <div class="factor">
+      <div class="hbar-row">
+        <span class="hbar-label"><strong>{{ t["factor_" ~ factor.key] }}</strong></span>
+        {% if factor.score is not none %}
+        <span class="hbar-track"><span class="hbar-fill" style="width: {{ '%.1f' | format(factor.score) }}%"></span></span>
+        <span class="hbar-value">{{ factor.score | number(0) }}</span>
+        {% else %}
+        <span class="muted small">{{ t.stock_not_applicable if not factor.applicable else t.stock_no_data }}</span>
+        {% endif %}
+      </div>
+      <ul class="reasons">
+        {% for score, text in factor.reasons %}<li>{{ text }}</li>{% endfor %}
+        {% for note in factor.notes %}<li class="muted">{{ note }}</li>{% endfor %}
+        {% if factor.missing %}<li class="muted">{{ t.stock_missing.format(items=factor.missing | join(", ")) }}</li>{% endif %}
+      </ul>
+    </div>
+    {% endfor %}
+  </section>
+  <div>
+    <section class="card">
+      <h2>{{ t.stock_metrics }}</h2>
+      <dl class="metrics">
+        <dt>{{ t.metric_history_years }}</dt><dd>{{ t.metric_years.format(n=metrics.get("history_years", 0) | number(1)) if metrics.get("history_years") else t.none }}</dd>
+        <dt>{{ t.metric_cagr_all }}</dt><dd>{{ metrics.get("cagr_all") | signed_ratio_pct }}</dd>
+        <dt>{{ t.metric_cagr_10y }}</dt><dd>{{ metrics.get("cagr_10y") | signed_ratio_pct }}</dd>
+        <dt>{{ t.metric_cagr_5y }}</dt><dd>{{ metrics.get("cagr_5y") | signed_ratio_pct }}</dd>
+        <dt>{{ t.metric_vol_1y }}</dt><dd>{{ metrics.get("vol_1y") | ratio_pct }}</dd>
+        <dt>{{ t.metric_max_dd_all }}</dt><dd>{{ metrics.get("max_dd_all") | ratio_pct }}</dd>
+        <dt>{{ t.metric_drawdown_now }}</dt><dd>{{ metrics.get("drawdown_now") | ratio_pct }}</dd>
+        <dt>{{ t.metric_sharpe_3y }}</dt><dd>{{ metrics.get("sharpe_3y") | number }}</dd>
+        <dt>{{ t.metric_beta_3y }}</dt><dd>{{ metrics.get("beta_3y") | number }}</dd>
+        <dt>{{ t.metric_rsi }}</dt><dd>{{ metrics.get("rsi") | number(0) }}</dd>
+        <dt>{{ t.metric_yield }}</dt><dd>{{ metrics.get("yield") | ratio_pct(2) }}</dd>
+        <dt>{{ t.metric_streak }}</dt><dd>{{ metrics.get("dividend_streak") if metrics.get("dividend_streak") is not none else t.none }}</dd>
+      </dl>
+    </section>
+    {% if received %}
+    <section class="card">
+      <h2>{{ t.stock_received }}</h2>
+      <table>
+        <thead><tr><th>{{ t.col_date }}</th><th class="num">{{ t.col_gross }}</th><th class="num">{{ t.col_net }}</th></tr></thead>
+        <tbody>{% for r in received[:12] %}<tr><td>{{ r.date | nldate }}</td><td class="num">{{ r.gross_eur | eur }}</td><td class="num">{{ r.net_eur | eur }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

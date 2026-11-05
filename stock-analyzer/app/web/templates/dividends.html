@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ t.div_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<h1>{{ t.div_title }}</h1>
+<p class="lead">{{ t.div_explain }}</p>
+
+<section class="tiles">
+  <div class="tile"><span class="tile-label">{{ t.div_year_totals.format(year=year) }}: {{ t.div_total_received }}</span><strong>{{ totals.received_net | eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.div_total_expected_gross }}</span><strong>{{ totals.expected_gross | eur }}</strong></div>
+  <div class="tile"><span class="tile-label">{{ t.div_total_expected_net }}</span><strong>{{ totals.expected_net | eur }}</strong>
+    {% if totals.net_unknown %}<span class="muted small">{{ t.div_net_unknown }}</span>{% endif %}</div>
+</section>
+
+<section class="card">
+  <div class="cal-head">
+    <a class="button" href="/dividends?year={{ previous[0] }}&amp;month={{ previous[1] }}">← {{ t.div_month_prev }}</a>
+    <h2>{{ t.months[month - 1] }} {{ year }}</h2>
+    <a class="button" href="/dividends?year={{ following[0] }}&amp;month={{ following[1] }}">{{ t.div_month_next }} →</a>
+  </div>
+  <div class="cal-legend small">
+    <span><span class="chip chip-received" aria-hidden="true"></span>{{ t.div_received }}</span>
+    <span><span class="chip chip-expected" aria-hidden="true"></span>{{ t.div_expected }}</span>
+  </div>
+  <div class="calendar" role="table">
+    <div class="cal-row cal-weekdays" role="row">{% for day in t.weekdays %}<div role="columnheader">{{ day }}</div>{% endfor %}</div>
+    {% for week in weeks %}
+    <div class="cal-row" role="row">
+      {% for cell in week %}
+      <div role="cell" class="cal-cell{% if not cell.date %} cal-blank{% endif %}{% if cell.date == today %} cal-today{% endif %}">
+        {% if cell.date %}
+        <span class="cal-day">{{ cell.date.day }}</span>
+        {% for item in cell.received %}
+        <div class="cal-item cal-received" title="{{ item.name }}: {{ t.col_gross }} {{ item.gross_eur | eur }}, {{ t.col_net }} {{ item.net_eur | eur }}">
+          <span class="cal-name">{{ item.name }}</span><strong>{{ item.net_eur | eur }}</strong>
+        </div>
+        {% endfor %}
+        {% for item in cell.expected %}
+        <div class="cal-item cal-expected" title="{{ item.name }}: {{ t.col_ex_date }} {{ item.ex_date | nldate }}, {{ t.col_gross }} {{ item.gross_eur | eur }}">
+          <span class="cal-name">{{ item.name }}</span><strong>{% if item.status != "confirmed" %}~ {% endif %}{{ item.gross_eur | eur }}</strong>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>{{ t.div_year_chart.format(year=year) }}</h2>
+  <div class="bar-chart" data-bars='{{ {"months": t.months_short, "rows": totals.months, "received": t.div_received, "expected": t.div_expected} | tojson }}'></div>
+  <details class="table-view">
+    <summary>{{ t.div_table_view }}</summary>
+    <table>
+      <thead><tr><th>{{ t.div_month }}</th><th class="num">{{ t.div_received }}</th><th class="num">{{ t.div_expected }}</th></tr></thead>
+      <tbody>{% for row in totals.months %}<tr><td>{{ t.months[row.month - 1] }}</td><td class="num">{{ row.received | eur }}</td><td class="num">{{ row.expected | eur }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </details>
+</section>
+
+<section class="card">
+  <h2>{{ t.div_upcoming }}</h2>
+  {% if expected %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ t.col_pay_date }}</th><th>{{ t.col_product }}</th><th>{{ t.col_ex_date }}</th><th class="num">{{ t.col_qty }}</th>
+      <th class="num">{{ t.col_per_share }}</th><th class="num">{{ t.col_gross }}</th><th class="num">{{ t.col_net }}</th><th>{{ t.col_status }}</th></tr></thead>
+    <tbody>
+    {% for item in expected %}
+      <tr>
+        <td>{{ item.pay_date | nldate }}<div class="muted small">{{ m.pay_basis(item) }}</div></td>
+        <td><a href="/stocks/{{ item.isin }}">{{ item.name }}</a></td>
+        <td>{{ item.ex_date | nldate }}</td>
+        <td class="num">{{ item.quantity | quantity }}</td>
+        <td class="num">{{ item.per_share | number(4) }} {{ item.currency or "" }}</td>
+        <td class="num">{{ item.gross_eur | eur }}</td>
+        <td class="num">{{ item.net_eur | eur }}</td>
+        <td>{{ m.dividend_status(item) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted">{{ t.div_none_upcoming }}</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>{{ t.div_history }}</h2>
+  {% if received %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ t.col_date }}</th><th>{{ t.col_product }}</th><th class="num">{{ t.col_gross }}</th><th class="num">{{ t.col_tax }}</th><th class="num">{{ t.col_net }}</th></tr></thead>
+    <tbody>
+    {% for item in received %}
+      <tr><td>{{ item.date | nldate }}</td><td><a href="/stocks/{{ item.isin }}">{{ item.name }}</a></td>
+        <td class="num">{{ item.gross_eur | eur }}</td><td class="num">{{ item.tax_eur | eur }}</td><td class="num">{{ item.net_eur | eur }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted">{{ t.div_none_received }}</p>{% endif %}
+</section>
+{% endblock %}

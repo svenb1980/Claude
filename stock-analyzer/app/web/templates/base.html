@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ t.app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">{{ t.app_name }}</a>
+  <nav>
+    {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
+    <a href="{{ href }}" {% if path == href %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  {% if login_enabled and path != "/login" %}
+  <form method="post" action="/logout"><button class="link">{{ t.logout }}</button></form>
+  {% endif %}
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>{{ t.disclaimer }}</footer>
+<script src="/static/charts.js"></script>
+</body>
+</html>
