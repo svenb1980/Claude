@@ -56,10 +56,12 @@ class ExpectedDividend:
     net_eur: float | None
 
 
-def _fx_from_statement(session: Session) -> dict[tuple[dt.date, str], float]:
+def _fx_from_statement(session: Session, portfolio_id: int) -> dict[tuple[dt.date, str], float]:
     """Exchange rates DEGIRO actually used, as foreign currency per EUR."""
     rows = session.scalars(
-        select(AccountEntry).where(AccountEntry.fx.is_not(None), AccountEntry.currency.is_not(None))
+        select(AccountEntry).where(
+            AccountEntry.portfolio_id == portfolio_id, AccountEntry.fx.is_not(None), AccountEntry.currency.is_not(None)
+        )
     ).all()
     return {(r.date, r.currency): r.fx for r in rows if r.currency != "EUR" and r.fx and r.fx > 0}
 
@@ -76,12 +78,16 @@ def _to_eur(session: Session, statement_fx: dict, date: dt.date, currency: str |
     return amount * rate if rate is not None else None
 
 
-def received_dividends(session: Session) -> list[ReceivedDividend]:
+def received_dividends(session: Session, portfolio_id: int) -> list[ReceivedDividend]:
     entries = session.scalars(
-        select(AccountEntry).where(AccountEntry.kind.in_(("dividend", "dividend_tax")), AccountEntry.isin.is_not(None))
+        select(AccountEntry).where(
+            AccountEntry.portfolio_id == portfolio_id,
+            AccountEntry.kind.in_(("dividend", "dividend_tax")),
+            AccountEntry.isin.is_not(None),
+        )
     ).all()
     products = {p.isin: p for p in session.scalars(select(Product)).all()}
-    statement_fx = _fx_from_statement(session)
+    statement_fx = _fx_from_statement(session, portfolio_id)
 
     groups: dict[tuple[str, dt.date], dict] = {}
     for entry in entries:
@@ -178,12 +184,15 @@ def _quantity_before(transactions: list[Transaction], date: dt.date) -> float:
     return max(0.0, sum(t.quantity for t in transactions if t.date < date))
 
 
-def expected_dividends(session: Session, today: dt.date | None = None, horizon_days: int = 365) -> list[ExpectedDividend]:
+def expected_dividends(
+    session: Session, portfolio_id: int, today: dt.date | None = None, horizon_days: int = 365
+) -> list[ExpectedDividend]:
     today = today or dt.date.today()
     horizon = today + dt.timedelta(days=horizon_days)
-    products = session.scalars(select(Product).where(Product.ticker.is_not(None))).all()
-    all_tx = session.scalars(select(Transaction)).all()
-    received = received_dividends(session)
+    all_tx = session.scalars(select(Transaction).where(Transaction.portfolio_id == portfolio_id)).all()
+    isins = {t.isin for t in all_tx}
+    products = [p for p in session.scalars(select(Product).where(Product.ticker.is_not(None))).all() if p.isin in isins]
+    received = received_dividends(session, portfolio_id)
 
     expected: list[ExpectedDividend] = []
     for product in products:

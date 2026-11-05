@@ -87,6 +87,14 @@ def replay_transactions(transactions: Iterable) -> dict[str, Lot]:
     return lots
 
 
+def average_fee_eur(session: Session, portfolio_id: int, default: float = 2.0) -> float:
+    """What an order typically costs in this portfolio, from its own transactions."""
+    fee = session.scalar(
+        select(func.avg(Transaction.fees_eur)).where(Transaction.portfolio_id == portfolio_id, Transaction.fees_eur > 0)
+    )
+    return float(fee) if fee else default
+
+
 def latest_fx(session: Session, currency: str | None, on: dt.date | None = None) -> float | None:
     """EUR value of one unit of currency. On a date, uses the last known rate before it."""
     if currency is None:
@@ -147,21 +155,23 @@ def _latest_price(session: Session, ticker: str) -> tuple[float, dt.date] | None
     return (row[0], row[1]) if row else None
 
 
-def dividends_received_eur(session: Session) -> dict[str, float]:
+def dividends_received_eur(session: Session, portfolio_id: int) -> dict[str, float]:
     """Net dividends received per ISIN, in EUR."""
     from app.dividends.calendar import received_dividends
 
     totals: dict[str, float] = {}
-    for item in received_dividends(session):
+    for item in received_dividends(session, portfolio_id):
         if item.net_eur is not None:
             totals[item.isin] = totals.get(item.isin, 0.0) + item.net_eur
     return totals
 
 
-def build_portfolio(session: Session) -> PortfolioSummary:
-    lots = replay_transactions(session.scalars(select(Transaction)).all())
+def build_portfolio(session: Session, portfolio_id: int) -> PortfolioSummary:
+    lots = replay_transactions(
+        session.scalars(select(Transaction).where(Transaction.portfolio_id == portfolio_id)).all()
+    )
     products = {p.isin: p for p in session.scalars(select(Product)).all()}
-    dividends = dividends_received_eur(session)
+    dividends = dividends_received_eur(session, portfolio_id)
     positions: list[Position] = []
     warnings: list[str] = []
     fees_eur = sum(lot.fees_eur for lot in lots.values())
@@ -230,9 +240,13 @@ def build_portfolio(session: Session) -> PortfolioSummary:
     )
 
 
-def import_status(session: Session) -> dict:
+def import_status(session: Session, portfolio_id: int) -> dict:
     def _range(model):
-        return session.execute(select(func.count(), func.min(model.date), func.max(model.date)).select_from(model)).one()
+        return session.execute(
+            select(func.count(), func.min(model.date), func.max(model.date))
+            .select_from(model)
+            .where(model.portfolio_id == portfolio_id)
+        ).one()
 
     tx_count, tx_first, tx_last = _range(Transaction)
     ac_count, ac_first, ac_last = _range(AccountEntry)

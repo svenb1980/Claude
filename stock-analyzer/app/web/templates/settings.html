@@ -33,7 +33,7 @@
 
 <section class="card">
   <h2>{{ t.set_symbols }}</h2>
-  <p class="muted small">{{ t.set_symbols_help }}</p>
+  <p class="muted small">{{ t.set_symbols_help }} {{ t.set_ticker_shared }}</p>
   {% if products %}
   <div class="table-wrap">
   <table>
@@ -60,4 +60,15 @@
   </div>
   {% else %}<p class="muted">{{ t.set_no_products }}</p>{% endif %}
 </section>
+
+{% if user.is_admin %}
+<section class="card">
+  <h2>{{ t.set_universe }}</h2>
+  <p class="muted small">{{ t.set_universe_counts.format(total=screener_counts.total, with_data=screener_counts.with_data) }}</p>
+  <form method="post" action="/settings/universe" class="stack">
+    <label>{{ t.set_universe_add }}<input type="text" name="tickers" maxlength="2000" size="60" required></label>
+    <button>{{ t.acc_add }}</button>
+  </form>
+</section>
+{% endif %}
 {% endblock %}

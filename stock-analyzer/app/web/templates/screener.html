@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ t.scr_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ t.scr_title }}</h1>
+  <div class="refresh">
+    <span class="muted small">{{ t.scr_data.format(with_data=counts.with_data, total=counts.total, errors=counts.errors) }}</span>
+    {% if user.is_admin %}
+    <form method="post" action="/screener/refresh"><button {% if status.get("running") %}disabled{% endif %}>{{ t.scr_refreshing if status.get("running") else t.scr_refresh }}</button></form>
+    {% endif %}
+  </div>
+</div>
+<p class="lead">{{ t.scr_intro }}</p>
+{% if status.get("stopped_early") %}<p class="notice">{{ t.scr_stopped_early }}</p>{% endif %}
+
+<nav class="tabs" aria-label="{{ t.scr_preset }}">
+  <span class="muted small">{{ t.scr_preset }}:</span>
+  {% for key in presets %}
+  <a href="/screener?preset={{ key }}" {% if key == preset %}aria-current="page"{% endif %}>{{ t["preset_" ~ key] }}</a>
+  {% endfor %}
+</nav>
+
+<form method="get" action="/screener" class="filters">
+  <input type="hidden" name="preset" value="{{ preset }}">
+  <label>{{ t.scr_search }}<input type="search" name="q" value="{{ selected.q }}"></label>
+  <label>{{ t.scr_label }}
+    <select name="label">
+      <option value="">{{ t.scr_all }}</option>
+      {% for key in ["candidate", "neutral", "weak", "insufficient"] %}<option value="{{ key }}" {% if selected.label == key %}selected{% endif %}>{{ t["label_" ~ key] }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t.scr_sector }}
+    <select name="sector">
+      <option value="">{{ t.scr_all }}</option>
+      {% for value in sectors %}<option value="{{ value }}" {% if selected.sector == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t.scr_country }}
+    <select name="region">
+      <option value="">{{ t.scr_all }}</option>
+      {% for value in regions %}<option value="{{ value }}" {% if selected.region == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t.scr_min_yield }}<input type="number" name="min_yield" min="0" max="25" step="0.5" value="{{ selected.min_yield }}"></label>
+  <button>{{ t.scr_filter }}</button>
+</form>
+
+<section class="card">
+  {% if results %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>{{ t.col_product }}</th><th>{{ t.scr_label }}</th><th class="num">{{ t.col_score }}</th><th class="num">{{ t.col_confidence }}</th>
+      <th class="num">{{ t.scr_col_yield }}</th><th class="num">{{ t.scr_col_pe }}</th><th>{{ t.scr_col_reasons }}</th><th>{{ t.col_data_date }}</th>
+    </tr></thead>
+    <tbody>
+    {% for r in results %}
+      <tr>
+        <td><a href="/market/{{ r.ticker }}?preset={{ preset }}">{{ r.name }}</a><div class="muted small">{{ r.ticker }}{% if r.sector %} · {{ r.sector }}{% endif %}</div></td>
+        <td><span class="badge badge-{{ r.label }}">{{ t["label_" ~ r.label] }}</span></td>
+        <td class="num">{{ r.score | number(0) }}</td>
+        <td class="num">{{ r.confidence | pct(0) }}</td>
+        <td class="num">{{ r.dividend_yield | ratio_pct(2) }}</td>
+        <td class="num">{{ r.trailing_pe | number(1) }}</td>
+        <td class="small">{% for reason in r.top_reasons %}<div>{{ reason }}</div>{% endfor %}</td>
+        <td class="small">{{ r.data_date | nldate }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small">{{ t.scr_shown.format(shown=results | length, total=total) }}</p>
+  {% else %}<p class="muted">{{ t.scr_empty }}</p>{% endif %}
+</section>
+
+<section class="card">
+  <p class="small">{{ t.scr_data_help }}</p>
+  <h2>{{ t.scr_limits_title }}</h2>
+  <ul>{% for line in t.scr_limits %}<li>{{ line }}</li>{% endfor %}</ul>
+</section>
+{% endblock %}

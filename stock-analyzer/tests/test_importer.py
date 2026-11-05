@@ -7,7 +7,7 @@ import pytest
 from app.importers.degiro_csv import UnknownFormat, classify, parse_date, parse_export, parse_number
 from app.importers.store import check_duplicates, save_export
 from app.models import AccountEntry, Product, Transaction
-from tests.conftest import ISIN_NL, ISIN_US, make_account_csv, make_transactions_csv
+from tests.conftest import PID, ISIN_NL, ISIN_US, make_account_csv, make_transactions_csv
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -90,28 +90,28 @@ def test_bad_rows_are_reported_not_saved():
 
 def test_reimport_adds_no_duplicates(session):
     parsed = parse_export(make_transactions_csv())
-    assert save_export(session, parsed) == 4
+    assert save_export(session, parsed, PID) == 4
     session.commit()
-    check = check_duplicates(session, parse_export(make_transactions_csv()))
+    check = check_duplicates(session, parse_export(make_transactions_csv()), PID)
     assert (check.new, check.duplicates) == (0, 4)
-    assert save_export(session, parse_export(make_transactions_csv())) == 0
+    assert save_export(session, parse_export(make_transactions_csv()), PID) == 0
     assert session.query(Transaction).count() == 4
 
 
 def test_overlapping_export_only_adds_new_rows(session):
-    save_export(session, parse_export(make_account_csv()))
+    save_export(session, parse_export(make_account_csv()), PID)
     extra = make_account_csv() + b'06-06-2025,09:00,06-06-2025,,,iDEAL storting,,EUR,"5,00",EUR,"1,00",\n'
-    assert save_export(session, parse_export(extra)) == 1
+    assert save_export(session, parse_export(extra), PID) == 1
     assert session.query(AccountEntry).count() == 8
 
 
 def test_identical_rows_in_one_file_are_both_kept(session):
     lines = make_transactions_csv().decode().splitlines(keepends=True)
     raw = (lines[0] + lines[1] + lines[1]).encode()
-    assert save_export(session, parse_export(raw)) == 2
+    assert save_export(session, parse_export(raw), PID) == 2
 
 
 def test_import_creates_products(session):
-    save_export(session, parse_export(make_transactions_csv()))
+    save_export(session, parse_export(make_transactions_csv()), PID)
     assert session.get(Product, ISIN_US).name == "US CORP"
     assert session.get(Product, ISIN_NL).exchange == "EAM"

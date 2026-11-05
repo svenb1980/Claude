@@ -2,6 +2,7 @@
 {% block title %}{{ t.imp_title }} · {{ t.app_name }}{% endblock %}
 {% block content %}
 <h1>{{ t.imp_title }}</h1>
+<p class="muted">{{ t.imp_target.format(name=portfolio_name) }}</p>
 <p class="lead">{{ t.imp_intro }} <span class="muted">{{ t.imp_stored_where }}</span></p>
 
 {% if done is not none %}<p class="notice notice-ok" role="status">{{ t.imp_done.format(n=done) }}</p>{% endif %}

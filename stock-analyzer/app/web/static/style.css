@@ -11,6 +11,7 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+  --series-4: #8a8983;
   --good: #0a7d3c;
   --good-bg: #e3f4ea;
   --warn: #8a5a00;
@@ -33,6 +34,7 @@
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
+    --series-4: #8f8e85;
     --good: #6fd39a;
     --good-bg: #173524;
     --warn: #e6bd67;
@@ -63,6 +65,17 @@ h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; }
   display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
   padding: .6rem 1.5rem; background: var(--surface-1); border-bottom: 1px solid var(--border);
 }
+.topbar-right { display: flex; align-items: center; gap: .9rem; font-size: .88rem; }
+.topbar-right a { color: var(--text-secondary); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.tabs { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; margin-bottom: .75rem; }
+.tabs a { padding: .3rem .7rem; border-radius: 999px; border: 1px solid var(--border); text-decoration: none; color: var(--text-secondary); font-size: .88rem; }
+.tabs a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.filters { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; margin-bottom: 1rem; }
+.filters input[type="number"] { width: 6.5rem; }
+.add-form { margin-top: .9rem; }
+.check { flex-direction: row; align-items: center; gap: .4rem; }
+button.danger { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
 .brand { font-weight: 700; color: inherit; text-decoration: none; }
 .topbar nav { display: flex; gap: .25rem; flex-wrap: wrap; flex: 1; }
 .topbar nav a { padding: .35rem .7rem; border-radius: 6px; color: var(--text-secondary); text-decoration: none; }
@@ -104,6 +117,9 @@ tbody tr:last-child td { border-bottom: 0; }
 .badge-buy { background: var(--good-bg); color: var(--good); }
 .badge-hold { background: var(--neutral-bg); color: var(--text-primary); }
 .badge-insufficient { background: var(--warn-bg); color: var(--warn); }
+.badge-candidate { background: var(--good-bg); color: var(--good); }
+.badge-neutral { background: var(--neutral-bg); color: var(--text-primary); }
+.badge-weak { background: var(--bad-bg); color: var(--bad); }
 .tag { font-size: .8rem; white-space: nowrap; }
 .tag-confirmed { color: var(--good); }
 .tag-partial { color: var(--warn); }
@@ -123,6 +139,7 @@ button.primary, .button.primary { background: var(--accent); border-color: var(-
 button.primary:hover, .button.primary:hover { filter: brightness(1.08); }
 button:disabled { opacity: .55; cursor: default; }
 button.link { background: none; border: 0; color: var(--text-secondary); padding: 0; text-decoration: underline; }
+select { font: inherit; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-0); color: inherit; max-width: 14rem; }
 input { font: inherit; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-0); color: inherit; }
 label { display: flex; flex-direction: column; gap: .2rem; font-size: .88rem; }
 .stack { display: flex; flex-direction: column; gap: .8rem; align-items: flex-start; }
@@ -149,6 +166,11 @@ label { display: flex; flex-direction: column; gap: .2rem; font-size: .88rem; }
 
 .chart-legend { display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; font-size: .85rem; margin-bottom: .4rem; color: var(--text-secondary); }
 .chart-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: .35rem; }
+.chart-ranges { display: flex; gap: .2rem; margin-bottom: .4rem; }
+.chart-ranges button { padding: .1rem .5rem; font-size: .8rem; }
+.chart-ranges button[aria-pressed="true"] { background: var(--neutral-bg); font-weight: 600; }
+.level-table { margin-top: .75rem; }
+.intraday-output { margin-top: .75rem; }
 .chart-box { position: relative; }
 .chart-box svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
 .chart-tooltip {

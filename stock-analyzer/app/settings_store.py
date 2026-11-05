@@ -1,4 +1,4 @@
-"""User-editable settings, stored in the database."""
+"""Settings stored in the database. Analysis settings are per user."""
 from __future__ import annotations
 
 import json
@@ -8,6 +8,8 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models import Setting
+
+DEFAULT_BENCHMARK = "IWDA.AS"
 
 DEFAULT_ANALYSIS = {
     # Relative importance of each factor in the total score.
@@ -27,7 +29,7 @@ DEFAULT_ANALYSIS = {
     # Below this data coverage the tool shows "Onvoldoende data" instead of a label.
     "min_confidence_pct": 50.0,
     "risk_free_pct": 2.0,
-    "benchmark": "IWDA.AS",
+    "benchmark": DEFAULT_BENCHMARK,
 }
 
 
@@ -46,14 +48,28 @@ def set_setting(session: Session, key: str, value: Any) -> None:
     session.flush()
 
 
-def get_analysis_settings(session: Session) -> dict:
+def get_analysis_settings(session: Session, user_id: int) -> dict:
     merged = deepcopy(DEFAULT_ANALYSIS)
-    stored = dict(get_setting(session, "analysis", {}) or {})
+    stored = dict(get_setting(session, f"analysis:{user_id}", {}) or {})
     weights = stored.pop("weights", None)
     merged.update(stored)
     if weights:
         merged["weights"].update(weights)
     return merged
+
+
+def set_analysis_settings(session: Session, user_id: int, values: dict) -> None:
+    set_setting(session, f"analysis:{user_id}", values)
+
+
+def all_benchmarks(session: Session) -> set[str]:
+    """Every benchmark anyone uses, so the refresh job keeps them all current."""
+    benchmarks = {DEFAULT_BENCHMARK}
+    for row in session.query(Setting).filter(Setting.key.like("analysis:%")).all():
+        value = json.loads(row.value_json).get("benchmark")
+        if value:
+            benchmarks.add(value)
+    return benchmarks
 
 
 def data_version(session: Session) -> int:

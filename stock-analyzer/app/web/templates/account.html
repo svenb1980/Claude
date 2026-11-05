@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ t.acc_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<h1>{{ t.acc_title }}</h1>
+{% if message and t.get(message) %}<p class="notice notice-ok" role="status">{{ t[message] }}</p>{% endif %}
+{% if error and t.get(error) %}<p class="notice notice-error" role="alert">{{ t[error] }}</p>{% endif %}
+
+<section class="card">
+  <h2>{{ t.acc_portfolios }}</h2>
+  <p class="muted small">{{ t.acc_portfolios_help }}</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ t.nav_portfolio }}</th><th class="num">{{ t.acc_transactions }}</th><th>{{ t.acc_delete }}</th></tr></thead>
+    <tbody>
+    {% for p in portfolios %}
+      <tr>
+        <td>
+          <form method="post" action="/portfolios/{{ p.id }}/rename" class="inline-form">
+            <input type="text" name="name" value="{{ p.name }}" maxlength="80" required aria-label="{{ t.nav_portfolio }}">
+            <button>{{ t.acc_rename }}</button>
+          </form>
+        </td>
+        <td class="num">{{ counts[p.id] }}</td>
+        <td>
+          {% if portfolios | length > 1 %}
+          <details>
+            <summary>{{ t.acc_delete }}</summary>
+            <form method="post" action="/portfolios/{{ p.id }}/delete" class="stack small">
+              <label>{{ t.acc_confirm_portfolio }}<input type="text" name="confirm_name" required autocomplete="off"></label>
+              <button class="danger">{{ t.acc_delete }}</button>
+            </form>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <form method="post" action="/portfolios" class="inline-form add-form">
+    <input type="text" name="name" maxlength="80" required placeholder="{{ t.acc_new_portfolio }}" aria-label="{{ t.acc_new_portfolio }}">
+    <button class="primary">{{ t.acc_add }}</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>{{ t.acc_change_password }}</h2>
+  <form method="post" action="/account/password" class="stack">
+    <label>{{ t.acc_current_password }}<input type="password" name="current" required autocomplete="current-password"></label>
+    <label>{{ t.acc_new_password }}<input type="password" name="new" required minlength="10" autocomplete="new-password"></label>
+    <button>{{ t.set_save }}</button>
+  </form>
+</section>
+
+{% if user.is_admin %}
+<section class="card">
+  <h2>{{ t.acc_users }}</h2>
+  <p class="muted small">{{ t.acc_users_help }}</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>{{ t.acc_username_label }}</th><th>{{ t.col_status }}</th><th>{{ t.acc_reset_password }}</th><th>{{ t.acc_delete }}</th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      <tr>
+        <td>{{ u.username }}</td>
+        <td class="small">{{ t.acc_role_admin if u.is_admin else t.acc_role_user }}</td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/password" class="inline-form">
+            <input type="password" name="password" required minlength="10" autocomplete="new-password" aria-label="{{ t.acc_reset_password }} {{ u.username }}">
+            <button>{{ t.set_save }}</button>
+          </form>
+        </td>
+        <td>
+          {% if u.id != user.id %}
+          <details>
+            <summary>{{ t.acc_delete }}</summary>
+            <form method="post" action="/users/{{ u.id }}/delete" class="stack small">
+              <label>{{ t.acc_confirm_user }}<input type="text" name="confirm_name" required autocomplete="off"></label>
+              <button class="danger">{{ t.acc_delete }}</button>
+            </form>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <h3>{{ t.acc_new_user }}</h3>
+  <form method="post" action="/users" class="form-grid">
+    <label>{{ t.login_username }}<input type="text" name="username" required autocomplete="off"></label>
+    <label>{{ t.acc_temp_password }}<input type="password" name="password" required minlength="10" autocomplete="new-password"></label>
+    <label class="check"><input type="checkbox" name="is_admin" value="1"> {{ t.acc_is_admin }}</label>
+    <div><button class="primary">{{ t.acc_add }}</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

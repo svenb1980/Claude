@@ -94,12 +94,14 @@ class YFinanceProvider:
         options = {"start": start.isoformat()} if start else {"period": "max"}
         raw = self._yf.Ticker(ticker).history(auto_adjust=False, actions=False, **options)
         if raw is None or raw.empty:
-            return pd.DataFrame(columns=["close", "adj_close", "volume"])
+            return pd.DataFrame(columns=["close", "adj_close", "volume", "high", "low"])
         frame = pd.DataFrame(
             {
                 "close": raw["Close"].to_numpy(),
                 "adj_close": raw.get("Adj Close", raw["Close"]).to_numpy(),
                 "volume": raw["Volume"].to_numpy() if "Volume" in raw else None,
+                "high": raw["High"].to_numpy() if "High" in raw else None,
+                "low": raw["Low"].to_numpy() if "Low" in raw else None,
             },
             index=_date_index(raw.index),
         )
@@ -117,6 +119,10 @@ class YFinanceProvider:
         self._throttle()
         handle = self._yf.Ticker(ticker)
         info = handle.info or {}
+        bid, ask = _to_float(info.get("bid")), _to_float(info.get("ask"))
+        spread_pct = None
+        if bid and ask and ask >= bid:  # Often zero when the market is closed.
+            spread_pct = (ask - bid) / ((ask + bid) / 2) * 100
         data = {
             "name": info.get("longName") or info.get("shortName"),
             "currency": info.get("currency"),
@@ -124,6 +130,12 @@ class YFinanceProvider:
             "sector": info.get("sector"),
             "country": info.get("country"),
             "trailing_pe": _to_float(info.get("trailingPE")),
+            "forward_pe": _to_float(info.get("forwardPE")),
+            "price_to_book": _to_float(info.get("priceToBook")),
+            "revenue_growth": _to_float(info.get("revenueGrowth")),
+            "earnings_growth": _to_float(info.get("earningsGrowth")),
+            "return_on_equity": _to_float(info.get("returnOnEquity")),
+            "spread_pct": spread_pct,
             "payout_ratio": _to_float(info.get("payoutRatio")),
             "profit_margin": _to_float(info.get("profitMargins")),
             "debt_to_equity": _to_float(info.get("debtToEquity")),
@@ -136,6 +148,15 @@ class YFinanceProvider:
             data["next_ex_date"] = _iso(calendar.get("Ex-Dividend Date"))
             data["next_pay_date"] = _iso(calendar.get("Dividend Date"))
         return data
+
+    def intraday(self, ticker: str, interval: str = "5m", period: str = "60d") -> pd.DataFrame:
+        self._throttle()
+        raw = self._yf.Ticker(ticker).history(interval=interval, period=period, auto_adjust=False, actions=False)
+        columns = ["open", "high", "low", "close", "volume"]
+        if raw is None or raw.empty:
+            return pd.DataFrame(columns=columns)
+        frame = raw.rename(columns=str.lower)[columns].dropna(subset=["close"])
+        return frame[~frame.index.duplicated(keep="last")]
 
     def fx_history(self, currency: str, start: dt.date | None) -> pd.Series:
         self._throttle()

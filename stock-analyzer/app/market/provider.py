@@ -24,7 +24,7 @@ class MarketDataProvider(Protocol):
         """Find the ticker for an ISIN, preferring the exchange DEGIRO reports."""
 
     def price_history(self, ticker: str, start: dt.date | None) -> pd.DataFrame:
-        """Daily data indexed by date, columns: close, adj_close, volume.
+        """Daily data indexed by date, columns: close, adj_close, volume, high, low.
 
         `start=None` means all available history.
         """
@@ -34,9 +34,13 @@ class MarketDataProvider(Protocol):
 
     def fundamentals(self, ticker: str) -> dict:
         """Keys used (all optional): name, currency, quote_type, sector, country,
-        trailing_pe, payout_ratio, profit_margin, debt_to_equity,
+        trailing_pe, forward_pe, price_to_book, payout_ratio, profit_margin, debt_to_equity,
+        revenue_growth, earnings_growth, return_on_equity, spread_pct,
         next_ex_date (ISO), next_pay_date (ISO).
         """
+
+    def intraday(self, ticker: str, interval: str = "5m", period: str = "60d") -> pd.DataFrame:
+        """Recent bars in the exchange's time zone, columns: open, high, low, close, volume."""
 
     def fx_history(self, currency: str, start: dt.date | None) -> pd.Series:
         """EUR value of one unit of `currency`, indexed by date."""

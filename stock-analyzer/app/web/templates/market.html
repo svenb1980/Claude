@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ stock.name }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<p><a href="/screener?preset={{ preset }}">← {{ t.scr_back }}</a></p>
+<div class="page-head">
+  <div>
+    <h1>{{ stock.name }}</h1>
+    <p class="muted">{{ stock.ticker }}{% if stock.sector %} · {{ stock.sector }}{% endif %}{% if stock.country %} · {{ stock.country }}{% endif %}{% if stock.indices %} · {{ stock.indices }}{% endif %}</p>
+  </div>
+  <div class="headline-signal">
+    <span class="badge badge-{{ label }}">{{ t["label_" ~ label] }}</span>
+    <div class="muted small">{{ t.col_score }} {{ score | number(0) }} · {{ t.col_confidence }} {{ confidence | pct(0) }}</div>
+  </div>
+</div>
+{% if stock.refresh_error %}<p class="notice">{{ stock.refresh_error }}</p>{% endif %}
+
+{% include "_chart.html" %}
+
+{% if factors %}
+<div class="columns">
+  <section class="card">
+    <h2>{{ t.scr_breakdown.format(preset=t["preset_" ~ preset]) }}</h2>
+    {% for factor in factors %}
+    {% if weights.get(factor.key, 0) > 0 %}
+    <div class="factor">
+      <div class="hbar-row">
+        <span class="hbar-label"><strong>{{ t["factor_" ~ factor.key] }}</strong></span>
+        {% if factor.score is not none %}
+        <span class="hbar-track"><span class="hbar-fill" style="width: {{ '%.1f' | format(factor.score) }}%"></span></span>
+        <span class="hbar-value">{{ factor.score | number(0) }}</span>
+        {% else %}<span class="muted small">{{ t.stock_no_data }}</span>{% endif %}
+      </div>
+      <ul class="reasons">
+        {% for score_value, text in factor.reasons %}<li>{{ text }}</li>{% endfor %}
+        {% for note in factor.notes %}<li class="muted">{{ note }}</li>{% endfor %}
+        {% if factor.missing %}<li class="muted">{{ t.stock_missing.format(items=factor.missing | join(", ")) }}</li>{% endif %}
+      </ul>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>{{ t.stock_metrics }}</h2>
+    <dl class="metrics">
+      <dt>{{ t.metric_history_years }}</dt><dd>{{ t.metric_years.format(n=metrics.get("history_years", 0) | number(1)) if metrics.get("history_years") else t.none }}</dd>
+      <dt>{{ t.metric_cagr_10y }}</dt><dd>{{ metrics.get("cagr_10y") | signed_ratio_pct }}</dd>
+      <dt>{{ t.metric_cagr_5y }}</dt><dd>{{ metrics.get("cagr_5y") | signed_ratio_pct }}</dd>
+      <dt>{{ t.metric_vol_1y }}</dt><dd>{{ metrics.get("vol_1y") | ratio_pct }}</dd>
+      <dt>{{ t.metric_max_dd_all }}</dt><dd>{{ metrics.get("max_dd_all") | ratio_pct }}</dd>
+      <dt>{{ t.metric_yield }}</dt><dd>{{ metrics.get("yield") | ratio_pct(2) }}</dd>
+      <dt>{{ t.metric_streak }}</dt><dd>{{ metrics.get("dividend_streak") if metrics.get("dividend_streak") is not none else t.none }}</dd>
+    </dl>
+  </section>
+</div>
+{% else %}<p class="muted">{{ t.scr_no_data }}</p>{% endif %}
+{% endblock %}

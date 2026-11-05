@@ -17,14 +17,14 @@ from app.importers.degiro_csv import parse_export
 from app.importers.store import save_export
 from app.market.refresh import refresh_all
 from app.models import DividendHistory, Product
-from tests.conftest import ISIN_NL, ISIN_US, make_account_csv, make_transactions_csv
+from tests.conftest import PID, ISIN_NL, ISIN_US, make_account_csv, make_transactions_csv
 
 TODAY = dt.date(2026, 11, 5)
 
 
 def _seed(factory, session, provider):
-    save_export(session, parse_export(make_transactions_csv()))
-    save_export(session, parse_export(make_account_csv()))
+    save_export(session, parse_export(make_transactions_csv()), PID)
+    save_export(session, parse_export(make_account_csv()), PID)
     session.commit()
     refresh_all(factory, provider)
     session.expire_all()
@@ -32,7 +32,7 @@ def _seed(factory, session, provider):
 
 def test_received_combines_gross_and_tax(factory, session, provider):
     _seed(factory, session, provider)
-    items = {r.isin: r for r in received_dividends(session)}
+    items = {r.isin: r for r in received_dividends(session, PID)}
     nl = items[ISIN_NL]
     assert (nl.gross, nl.tax, nl.net) == (25.0, -3.75, 21.25)
     assert nl.net_eur == 21.25
@@ -41,7 +41,7 @@ def test_received_combines_gross_and_tax(factory, session, provider):
 
 def test_received_uses_degiros_own_exchange_rate(factory, session, provider):
     _seed(factory, session, provider)
-    us = next(r for r in received_dividends(session) if r.isin == ISIN_US)
+    us = next(r for r in received_dividends(session, PID) if r.isin == ISIN_US)
     assert us.gross == 8.0
     assert us.gross_eur == pytest.approx(8.0 / 1.08)
     assert us.net_eur == pytest.approx(6.8 / 1.08)
@@ -52,8 +52,8 @@ def test_reversed_dividend_nets_out(session):
         f'05-05-2025,09:00,05-05-2025,ACME NV,{ISIN_NL},Dividend,,EUR,"-25,00",EUR,"1,00",\n'
         f'05-05-2025,09:00,05-05-2025,ACME NV,{ISIN_NL},Dividendbelasting,,EUR,"3,75",EUR,"1,00",\n'
     ).encode()
-    save_export(session, parse_export(raw))
-    assert [r.isin for r in received_dividends(session)] == [ISIN_US]
+    save_export(session, parse_export(raw), PID)
+    assert [r.isin for r in received_dividends(session, PID)] == [ISIN_US]
 
 
 def test_pay_lag_from_own_receipts():
@@ -105,7 +105,7 @@ def test_projection_does_not_repeat_a_payment_already_made_this_year():
 
 def test_expected_amounts_use_current_shares_and_past_withholding(factory, session, provider):
     _seed(factory, session, provider)
-    expected = expected_dividends(session, today=TODAY)
+    expected = expected_dividends(session, PID, today=TODAY)
     acme = [e for e in expected if e.isin == ISIN_NL]
     assert len(acme) == 1
     item = acme[0]
@@ -119,7 +119,7 @@ def test_expected_amounts_use_current_shares_and_past_withholding(factory, sessi
 
 def test_expected_converts_foreign_currency_quarterly(factory, session, provider):
     _seed(factory, session, provider)
-    us = [e for e in expected_dividends(session, today=TODAY) if e.isin == ISIN_US]
+    us = [e for e in expected_dividends(session, PID, today=TODAY) if e.isin == ISIN_US]
     assert len(us) == 4
     assert us[0].gross_eur == pytest.approx(4 * 2.0 * 0.92)
     assert us[0].net_eur == pytest.approx(4 * 2.0 * 0.92 * 0.85)
@@ -128,22 +128,22 @@ def test_expected_converts_foreign_currency_quarterly(factory, session, provider
 def test_pay_date_estimated_from_own_history(factory, session, provider):
     _seed(factory, session, provider)
     # ACME: ex-date 25-04-2025, received 05-05-2025, so 10 days later.
-    item = next(e for e in expected_dividends(session, today=TODAY) if e.isin == ISIN_NL)
+    item = next(e for e in expected_dividends(session, PID, today=TODAY) if e.isin == ISIN_NL)
     assert item.pay_basis == "history"
     assert item.pay_date == dt.date(2027, 5, 6)
 
 
 def test_no_history_uses_default_lag_and_unknown_net(factory, session, provider):
-    save_export(session, parse_export(make_transactions_csv()))
+    save_export(session, parse_export(make_transactions_csv()), PID)
     session.commit()
     refresh_all(factory, provider)
     session.expire_all()
-    item = next(e for e in expected_dividends(session, today=TODAY) if e.isin == ISIN_NL)
+    item = next(e for e in expected_dividends(session, PID, today=TODAY) if e.isin == ISIN_NL)
     assert item.pay_basis == "default"
     assert item.net_eur is None
     assert item.gross_eur is not None
     # An unknown net total stays unknown instead of showing as zero.
-    totals = year_totals(2027, [], expected_dividends(session, today=TODAY))
+    totals = year_totals(2027, [], expected_dividends(session, PID, today=TODAY))
     assert totals["expected_gross"] > 0
     assert totals["expected_net"] is None
 
@@ -152,7 +152,7 @@ def test_announced_future_dividend_is_confirmed(factory, session, provider):
     _seed(factory, session, provider)
     session.add(DividendHistory(ticker="ACME.AS", ex_date=dt.date(2026, 12, 1), amount=2.0))
     session.commit()
-    item = next(e for e in expected_dividends(session, today=TODAY) if e.ex_date == dt.date(2026, 12, 1))
+    item = next(e for e in expected_dividends(session, PID, today=TODAY) if e.ex_date == dt.date(2026, 12, 1))
     assert item.status == "confirmed"
     assert item.per_share == 2.0
 
@@ -162,7 +162,7 @@ def test_announced_date_without_amount_says_so(factory, session, provider):
     product = session.get(Product, ISIN_NL)
     product.fundamentals_json = json.dumps({"next_ex_date": "2026-12-15", "next_pay_date": "2026-12-28"})
     session.commit()
-    item = next(e for e in expected_dividends(session, today=TODAY) if e.ex_date == dt.date(2026, 12, 15))
+    item = next(e for e in expected_dividends(session, PID, today=TODAY) if e.ex_date == dt.date(2026, 12, 15))
     assert item.status == "date_confirmed"
     assert item.pay_date == dt.date(2026, 12, 28)
     assert item.pay_basis == "confirmed"
@@ -172,7 +172,7 @@ def test_went_ex_recently_and_unpaid_counts_shares_at_that_date(factory, session
     _seed(factory, session, provider)
     session.add(DividendHistory(ticker="ACME.AS", ex_date=dt.date(2026, 11, 1), amount=1.0))
     session.commit()
-    item = next(e for e in expected_dividends(session, today=TODAY) if e.ex_date == dt.date(2026, 11, 1))
+    item = next(e for e in expected_dividends(session, PID, today=TODAY) if e.ex_date == dt.date(2026, 11, 1))
     assert item.status == "confirmed"
     assert item.quantity == 15
     assert item.pay_date >= TODAY
@@ -182,17 +182,17 @@ def test_sold_position_expects_nothing(factory, session, provider):
     raw = make_transactions_csv().decode() + (
         f'01-03-2026,10:00,ACME NV,{ISIN_NL},EAM,XAMS,-15,"130,00",EUR,"1950,00",EUR,"1950,00",EUR,,"-2,00",EUR,"1948,00",EUR,o\n'
     )
-    save_export(session, parse_export(raw.encode()))
+    save_export(session, parse_export(raw.encode()), PID)
     session.commit()
     refresh_all(factory, provider)
     session.expire_all()
-    assert not [e for e in expected_dividends(session, today=TODAY) if e.isin == ISIN_NL]
+    assert not [e for e in expected_dividends(session, PID, today=TODAY) if e.isin == ISIN_NL]
 
 
 def test_month_view_and_totals(factory, session, provider):
     _seed(factory, session, provider)
-    received = received_dividends(session)
-    expected = expected_dividends(session, today=TODAY)
+    received = received_dividends(session, PID)
+    expected = expected_dividends(session, PID, today=TODAY)
     weeks = month_view(2025, 5, received, expected)
     cells = [c for week in weeks for c in week if c.date == dt.date(2025, 5, 5)]
     assert cells[0].received[0].isin == ISIN_NL

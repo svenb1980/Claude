@@ -1,0 +1,41 @@
+{# The price chart with sell lines and evidence, shared by holdings and buy candidates. #}
+<section class="card">
+  <h2>{{ t.lvl_title }}</h2>
+  {% if chart %}
+  <p class="muted small">{{ t.lvl_intro }}</p>
+  <div class="line-chart" data-chart='{{ chart | tojson }}'></div>
+  {% if level_rows %}
+  <div class="table-wrap">
+  <table class="level-table">
+    <thead><tr><th>{{ t.lvl_col_level }}</th><th class="num">{{ t.lvl_col_price }}</th><th class="num">{{ t.lvl_col_distance }}</th><th>{{ t.lvl_col_evidence }}</th></tr></thead>
+    <tbody>
+    {% for row in level_rows %}
+      <tr>
+        <td><strong>{{ row.label }}</strong><div class="muted small">{{ row.explain }}</div></td>
+        <td class="num">{{ row.price | number }}</td>
+        <td class="num">{{ row.distance }}</td>
+        <td class="small">{{ row.evidence }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small">{{ t.lvl_atr.format(atr=level_info.atr_pct | pct, date=level_info.as_of | nldate) }}</p>
+  {% else %}<p class="muted">{{ t.lvl_no_levels }}</p>{% endif %}
+  <details class="table-view">
+    <summary>{{ t.stock_chart_table }}</summary>
+    <table><thead><tr><th>{{ t.col_date }}</th><th class="num">{{ t.col_price }}</th></tr></thead>
+      <tbody>{% for row in table %}<tr><td>{{ row.date | nldate }}</td><td class="num">{{ row.close | number }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+  {% else %}<p class="muted">{{ t.stock_no_prices }}</p>{% endif %}
+</section>
+
+{% if chart_ticker and chart %}
+<section class="card intraday" data-intraday="{{ chart_ticker }}" data-loading="{{ t.intra_loading }}" data-failed="{{ t.intra_failed }}"
+         data-col-level="{{ t.lvl_col_level }}" data-col-price="{{ t.lvl_col_price }}" data-col-distance="{{ t.lvl_col_distance }}" data-col-evidence="{{ t.lvl_col_evidence }}">
+  <h2>{{ t.intra_title }}</h2>
+  <p class="notice">{{ t.intra_warning }}</p>
+  <button type="button" class="intraday-load">{{ t.intra_load }}</button>
+  <div class="intraday-output" aria-live="polite"></div>
+</section>
+{% endif %}

@@ -9,13 +9,23 @@
 <body>
 <header class="topbar">
   <a class="brand" href="/">{{ t.app_name }}</a>
+  {% if user %}
   <nav>
-    {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
+    {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/screener", t.nav_screener), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
     <a href="{{ href }}" {% if path == href %}aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
-  {% if login_enabled and path != "/login" %}
-  <form method="post" action="/logout"><button class="link">{{ t.logout }}</button></form>
+  <div class="topbar-right">
+    <form method="post" action="/portfolios/select" class="portfolio-switch">
+      <label class="visually-hidden" for="portfolio-select">{{ t.nav_portfolio }}</label>
+      <select id="portfolio-select" name="portfolio_id" onchange="this.form.submit()">
+        {% for p in nav_portfolios %}<option value="{{ p.id }}" {% if p.id == current_portfolio_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+      </select>
+      <noscript><button>OK</button></noscript>
+    </form>
+    <a href="/account" {% if path == "/account" %}aria-current="page"{% endif %}>{{ user.username }}</a>
+    <form method="post" action="/logout"><button class="link">{{ t.logout }}</button></form>
+  </div>
   {% endif %}
 </header>
 <main>

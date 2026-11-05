@@ -33,17 +33,7 @@
   <div class="tile"><span class="tile-label">{{ t.col_weight }}</span><strong>{{ position.weight_pct | pct }}</strong></div>
 </section>
 
-<section class="card">
-  <h2>{{ t.stock_price_chart }}{% if position.currency %} ({{ position.currency }}){% endif %}</h2>
-  {% if chart %}
-  <div class="line-chart" data-chart='{{ {"points": chart, "series": [{"key": "p", "label": t.stock_chart_price, "slot": 1}, {"key": "s", "label": t.stock_chart_sma, "slot": 2}]} | tojson }}'></div>
-  <details class="table-view">
-    <summary>{{ t.stock_chart_table }}</summary>
-    <table><thead><tr><th>{{ t.col_date }}</th><th class="num">{{ t.col_price }}</th></tr></thead>
-      <tbody>{% for row in table %}<tr><td>{{ row.date | nldate }}</td><td class="num">{{ row.close | number }}</td></tr>{% endfor %}</tbody></table>
-  </details>
-  {% else %}<p class="muted">{{ t.stock_no_prices }}</p>{% endif %}
-</section>
+{% include "_chart.html" %}
 
 <div class="columns">
   <section class="card">

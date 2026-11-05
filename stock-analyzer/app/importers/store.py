@@ -17,19 +17,21 @@ class DuplicateCheck:
     duplicates: int
 
 
-def _existing(session: Session, model, hashes: list[str]) -> set[str]:
+def _existing(session: Session, model, portfolio_id: int, hashes: list[str]) -> set[str]:
     found: set[str] = set()
     # SQLite limits the number of bound variables per statement.
     for start in range(0, len(hashes), 500):
         chunk = hashes[start : start + 500]
-        found.update(session.scalars(select(model.row_hash).where(model.row_hash.in_(chunk))))
+        found.update(session.scalars(
+            select(model.row_hash).where(model.portfolio_id == portfolio_id, model.row_hash.in_(chunk))
+        ))
     return found
 
 
-def check_duplicates(session: Session, parsed: ParseResult) -> DuplicateCheck:
+def check_duplicates(session: Session, parsed: ParseResult, portfolio_id: int) -> DuplicateCheck:
     model = Transaction if parsed.kind == "transactions" else AccountEntry
     rows = parsed.transactions if parsed.kind == "transactions" else parsed.entries
-    existing = _existing(session, model, [r.row_hash for r in rows])
+    existing = _existing(session, model, portfolio_id, [r.row_hash for r in rows])
     return DuplicateCheck(new=len(rows) - len(existing), duplicates=len(existing))
 
 
@@ -43,23 +45,23 @@ def _ensure_product(session: Session, isin: str, name: str, exchange: str | None
         product.exchange = exchange or product.exchange
 
 
-def save_export(session: Session, parsed: ParseResult) -> int:
+def save_export(session: Session, parsed: ParseResult, portfolio_id: int) -> int:
     """Store new rows and return how many were added."""
     added = 0
     if parsed.kind == "transactions":
-        existing = _existing(session, Transaction, [r.row_hash for r in parsed.transactions])
+        existing = _existing(session, Transaction, portfolio_id, [r.row_hash for r in parsed.transactions])
         for row in sorted(parsed.transactions, key=lambda r: (r.date, r.time)):
             _ensure_product(session, row.isin, row.product, row.exchange)
             if row.row_hash not in existing:
-                session.add(Transaction(**asdict(row)))
+                session.add(Transaction(portfolio_id=portfolio_id, **asdict(row)))
                 added += 1
     else:
-        existing = _existing(session, AccountEntry, [r.row_hash for r in parsed.entries])
+        existing = _existing(session, AccountEntry, portfolio_id, [r.row_hash for r in parsed.entries])
         for row in parsed.entries:
             if row.isin:
                 _ensure_product(session, row.isin, row.product, None)
             if row.row_hash not in existing:
-                session.add(AccountEntry(**asdict(row)))
+                session.add(AccountEntry(portfolio_id=portfolio_id, **asdict(row)))
                 added += 1
     if added:
         bump_data_version(session)

@@ -6,7 +6,11 @@
   const nf = new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 2 });
   const eur = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
   const df = new Intl.DateTimeFormat("nl-NL", { day: "2-digit", month: "short", year: "numeric" });
-  const yearFmt = new Intl.DateTimeFormat("nl-NL", { month: "short", year: "2-digit" });
+  const dtf = new Intl.DateTimeFormat("nl-NL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const axisFull = new Intl.DateTimeFormat("nl-NL", { month: "short", year: "2-digit" });
+  const axisShort = new Intl.DateTimeFormat("nl-NL", { day: "numeric", month: "short" });
+  const axisTime = new Intl.DateTimeFormat("nl-NL", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const LEVEL_WINDOW = 0.35; // Lines further than this from the price would flatten the chart.
 
   function el(name, attrs, parent) {
     const node = document.createElementNS(SVG_NS, name);
@@ -40,23 +44,38 @@
     container.appendChild(box);
   }
 
-  function lineChart(container) {
-    const config = JSON.parse(container.dataset.chart);
+  // Keep level labels readable when lines sit close together.
+  function spreadLabels(items, minGap, top, bottom) {
+    const sorted = [...items].sort((a, b) => a.y - b.y);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].labelY < sorted[i - 1].labelY + minGap) sorted[i].labelY = sorted[i - 1].labelY + minGap;
+    }
+    const overflow = sorted.length ? sorted[sorted.length - 1].labelY - bottom : 0;
+    if (overflow > 0) {
+      sorted[sorted.length - 1].labelY = bottom;
+      for (let i = sorted.length - 2; i >= 0; i--) {
+        if (sorted[i].labelY > sorted[i + 1].labelY - minGap) sorted[i].labelY = sorted[i + 1].labelY - minGap;
+      }
+    }
+    sorted.forEach((s) => { s.labelY = Math.max(s.labelY, top); });
+  }
+
+  function drawLine(box, config, points) {
+    box.textContent = "";
     const dateKey = config.dateKey || "d";
-    const points = config.points;
     const series = config.series.filter((s) => points.some((p) => p[s.key] != null));
     if (points.length < 2 || !series.length) return;
-    legend(container, series);
 
-    const W = 900, H = 320, M = { l: 52, r: 16, t: 10, b: 26 };
-    const box = document.createElement("div");
-    box.className = "chart-box";
-    container.appendChild(box);
+    const hasLevels = (config.levels || []).length > 0;
+    const W = 900, H = 340, M = { l: 52, r: hasLevels ? 150 : 16, t: 10, b: 26 };
     const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, box);
 
     const dates = points.map((p) => new Date(p[dateKey]));
     const values = points.flatMap((p) => series.map((s) => p[s.key])).filter((v) => v != null);
-    const min = Math.min(...values), max = Math.max(...values);
+    const lastPrice = points[points.length - 1][series[0].key];
+    const levels = (config.levels || []).filter((l) => Math.abs(l.price / lastPrice - 1) <= LEVEL_WINDOW);
+    const domain = values.concat(levels.map((l) => l.price));
+    const min = Math.min(...domain), max = Math.max(...domain);
     const pad = (max - min) * 0.05 || 1;
     const y0 = min - pad, y1 = max + pad;
     const x = (i) => M.l + (i / (points.length - 1)) * (W - M.l - M.r);
@@ -67,12 +86,15 @@
       const label = el("text", { x: M.l - 8, y: y(tick) + 4, "text-anchor": "end", "font-size": 12, fill: "var(--text-secondary)" }, svg);
       label.textContent = nf.format(tick);
     });
-    const labels = 6;
-    for (let k = 0; k <= labels; k++) {
-      const i = Math.round((k / labels) * (points.length - 1));
-      const anchor = k === 0 ? "start" : k === labels ? "end" : "middle";
+
+    const spanDays = (dates[dates.length - 1] - dates[0]) / 86400000;
+    const axis = config.intraday ? axisTime : spanDays < 200 ? axisShort : axisFull;
+    const labelCount = 5;
+    for (let k = 0; k <= labelCount; k++) {
+      const i = Math.round((k / labelCount) * (points.length - 1));
+      const anchor = k === 0 ? "start" : k === labelCount ? "end" : "middle";
       const label = el("text", { x: x(i), y: H - 8, "text-anchor": anchor, "font-size": 12, fill: "var(--text-secondary)" }, svg);
-      label.textContent = yearFmt.format(dates[i]);
+      label.textContent = axis.format(dates[i]);
     }
 
     series.forEach((s) => {
@@ -82,7 +104,19 @@
         path += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(p[s.key]).toFixed(1)}`;
         pen = true;
       });
-      el("path", { d: path, fill: "none", stroke: `var(--series-${s.slot})`, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      el("path", { d: path, fill: "none", stroke: `var(--series-${s.slot})`, "stroke-width": s.slot === 1 ? 2 : 1.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    });
+
+    // Sell lines: dashed, with a direct label on the right. Text stays in ink colours.
+    const labelled = levels.map((l) => ({ ...l, y: y(l.price), labelY: y(l.price) + 4 }));
+    spreadLabels(labelled, 15, M.t + 10, H - M.b);
+    labelled.forEach((l) => {
+      el("line", { x1: M.l, x2: W - M.r, y1: l.y, y2: l.y, stroke: `var(--series-${l.slot})`, "stroke-width": 1.5, "stroke-dasharray": "6 4" }, svg);
+      if (Math.abs(l.labelY - 4 - l.y) > 1) {
+        el("line", { x1: W - M.r, x2: W - M.r + 6, y1: l.y, y2: l.labelY - 4, stroke: `var(--series-${l.slot})`, "stroke-width": 1 }, svg);
+      }
+      const text = el("text", { x: W - M.r + 8, y: l.labelY, "font-size": 12, fill: "var(--text-primary)" }, svg);
+      text.textContent = `${l.label} ${nf.format(l.price)}`;
     });
 
     const cross = el("line", { y1: M.t, y2: H - M.b, stroke: "var(--text-secondary)", "stroke-width": 1, visibility: "hidden" }, svg);
@@ -106,7 +140,7 @@
       cross.setAttribute("visibility", "visible");
       tip.textContent = "";
       const title = document.createElement("b");
-      title.textContent = df.format(dates[i]);
+      title.textContent = (config.intraday ? dtf : df).format(dates[i]);
       tip.appendChild(title);
       series.forEach((s, n) => {
         const value = points[i][s.key];
@@ -125,6 +159,40 @@
       const left = x(i) * scale;
       tip.style.left = left > rect.width / 2 ? `${left - tip.offsetWidth - 12}px` : `${left + 12}px`;
     });
+  }
+
+  function lineChart(container, config) {
+    const all = config.points;
+    const series = config.series.filter((s) => all.some((p) => p[s.key] != null));
+    if (all.length < 2 || !series.length) return;
+    legend(container, series);
+
+    const box = document.createElement("div");
+    box.className = "chart-box";
+
+    if (config.ranges) {
+      const bar = document.createElement("div");
+      bar.className = "chart-ranges";
+      const usable = config.ranges.filter((r, i) => i === 0 || all.length > config.ranges[i - 1].days);
+      const start = usable.find((r) => r.days === config.defaultRange) || usable[usable.length - 1];
+      const buttons = usable.map((range) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = range.label;
+        button.addEventListener("click", () => select(range, button));
+        bar.appendChild(button);
+        return { range, button };
+      });
+      function select(range, active) {
+        buttons.forEach((b) => b.button.setAttribute("aria-pressed", String(b.button === active)));
+        drawLine(box, config, all.slice(-range.days));
+      }
+      container.append(bar, box);
+      select(start, buttons.find((b) => b.range === start).button);
+    } else {
+      container.appendChild(box);
+      drawLine(box, config, all);
+    }
   }
 
   function barChart(container) {
@@ -191,6 +259,79 @@
     });
   }
 
-  document.querySelectorAll(".line-chart").forEach(lineChart);
+  function intradayTable(section, rows) {
+    const table = document.createElement("table");
+    table.className = "level-table";
+    const head = table.createTHead().insertRow();
+    [["colLevel", ""], ["colPrice", "num"], ["colDistance", "num"], ["colEvidence", ""]].forEach(([key, cls]) => {
+      const th = document.createElement("th");
+      th.textContent = section.dataset[key];
+      th.className = cls;
+      head.appendChild(th);
+    });
+    const body = table.createTBody();
+    rows.forEach((row) => {
+      const tr = body.insertRow();
+      const name = tr.insertCell();
+      const strong = document.createElement("strong");
+      strong.textContent = row.label;
+      const explain = document.createElement("div");
+      explain.className = "muted small";
+      explain.textContent = row.explain;
+      name.append(strong, explain);
+      const price = tr.insertCell();
+      price.className = "num";
+      price.textContent = row.priceText;
+      const distance = tr.insertCell();
+      distance.className = "num";
+      distance.textContent = row.distance;
+      const evidence = tr.insertCell();
+      evidence.className = "small";
+      evidence.textContent = row.evidence;
+    });
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  function intraday(section) {
+    const button = section.querySelector(".intraday-load");
+    const output = section.querySelector(".intraday-output");
+    function say(text) {
+      output.textContent = "";
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = text;
+      output.appendChild(p);
+    }
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      say(section.dataset.loading);
+      try {
+        const response = await fetch(`/api/intraday/${encodeURIComponent(section.dataset.intraday)}`);
+        const data = await response.json();
+        if (data.error) { say(data.error); return; }
+        output.textContent = "";
+        const chart = document.createElement("div");
+        output.appendChild(chart);
+        lineChart(chart, data.chart);
+        output.appendChild(intradayTable(section, data.rows));
+        data.notes.forEach((note) => {
+          const p = document.createElement("p");
+          p.className = "muted small";
+          p.textContent = note;
+          output.appendChild(p);
+        });
+      } catch (error) {
+        say(section.dataset.failed);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  document.querySelectorAll(".line-chart").forEach((c) => lineChart(c, JSON.parse(c.dataset.chart)));
   document.querySelectorAll(".bar-chart").forEach(barChart);
+  document.querySelectorAll(".intraday").forEach(intraday);
 })();

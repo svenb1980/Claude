@@ -7,11 +7,11 @@ from app.importers.store import save_export
 from app.market.refresh import refresh_all, refresh_prices
 from app.market.symbols import set_manual_ticker
 from app.models import Price, Product
-from tests.conftest import ISIN_NL, ISIN_US, make_transactions_csv
+from tests.conftest import PID, ISIN_NL, ISIN_US, make_transactions_csv
 
 
 def _seed(session):
-    save_export(session, parse_export(make_transactions_csv()))
+    save_export(session, parse_export(make_transactions_csv()), PID)
     session.commit()
 
 

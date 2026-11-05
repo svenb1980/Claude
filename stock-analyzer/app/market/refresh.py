@@ -21,7 +21,7 @@ from app.market.provider import MarketDataProvider
 from app.market.symbols import resolve_missing_symbols
 from app.models import DividendHistory, FxRate, Price, Product
 from app.portfolio.positions import normalise_currency
-from app.settings_store import bump_data_version, get_analysis_settings, get_setting, set_setting
+from app.settings_store import all_benchmarks, bump_data_version, get_setting, set_setting
 
 log = logging.getLogger(__name__)
 
@@ -37,15 +37,18 @@ def _upsert_prices(session: Session, ticker: str, frame: pd.DataFrame) -> None:
         adj = row.get("adj_close")
         adj = close if adj is None or pd.isna(adj) else float(adj)
         volume = row.get("volume")
+        high, low = row.get("high"), row.get("low")
         rows.append({
             "ticker": ticker, "date": date, "close": close, "adj_close": adj,
             "volume": None if volume is None or pd.isna(volume) else float(volume),
+            "high": None if high is None or pd.isna(high) else float(high),
+            "low": None if low is None or pd.isna(low) else float(low),
         })
     for start in range(0, len(rows), 400):
         stmt = insert(Price).values(rows[start : start + 400])
         stmt = stmt.on_conflict_do_update(
             index_elements=["ticker", "date"],
-            set_={c: stmt.excluded[c] for c in ("close", "adj_close", "volume")},
+            set_={c: stmt.excluded[c] for c in ("close", "adj_close", "volume", "high", "low")},
         )
         session.execute(stmt)
 
@@ -61,7 +64,11 @@ def refresh_prices(session: Session, provider: MarketDataProvider, ticker: str) 
     last = session.scalars(
         select(Price.date).where(Price.ticker == ticker).order_by(Price.date.desc()).limit(1)
     ).first()
-    if last is None:
+    # Rows from before highs and lows were stored need one full fetch too.
+    missing_highs = last is not None and session.scalars(
+        select(Price.date).where(Price.ticker == ticker, Price.high.is_(None)).limit(1)
+    ).first() is not None
+    if last is None or missing_highs:
         frame = provider.price_history(ticker, None)
         _upsert_prices(session, ticker, frame)
         return
@@ -135,7 +142,7 @@ def refresh_all(factory: sessionmaker[Session], provider: MarketDataProvider) ->
         with session_scope(factory) as session:
             resolve_missing_symbols(session, provider)
             isins = list(session.scalars(select(Product.isin).where(Product.ticker.is_not(None))))
-            benchmark = get_analysis_settings(session)["benchmark"]
+            benchmarks = sorted(all_benchmarks(session))
 
         currencies: set[str] = set()
         total = len(isins)
@@ -157,12 +164,13 @@ def refresh_all(factory: sessionmaker[Session], provider: MarketDataProvider) ->
                 if major and major != "EUR":
                     currencies.add(major)
 
-        with session_scope(factory) as session:
-            try:
-                refresh_prices(session, provider, benchmark)
-            except Exception as exc:
-                log.warning("Benchmark refresh failed: %s", exc)
-                failed += 1
+        for benchmark in benchmarks:
+            with session_scope(factory) as session:
+                try:
+                    refresh_prices(session, provider, benchmark)
+                except Exception as exc:
+                    log.warning("Benchmark refresh failed: %s", exc)
+                    failed += 1
         for currency in sorted(currencies):
             with session_scope(factory) as session:
                 try:

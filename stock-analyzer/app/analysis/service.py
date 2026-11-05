@@ -15,7 +15,7 @@ from app.portfolio.positions import PortfolioSummary, Position, build_portfolio,
 from app.settings_store import data_version, get_analysis_settings
 
 _cache_lock = threading.Lock()
-_cache: dict = {"key": None, "value": None}
+_cache: dict = {"version": None, "values": {}}
 
 
 @dataclass
@@ -27,12 +27,16 @@ class Signal:
 
 def load_prices(session: Session, ticker: str) -> pd.DataFrame:
     rows = session.execute(
-        select(Price.date, Price.close, Price.adj_close).where(Price.ticker == ticker).order_by(Price.date)
+        select(Price.date, Price.close, Price.adj_close, Price.volume, Price.high, Price.low)
+        .where(Price.ticker == ticker)
+        .order_by(Price.date)
     ).all()
+    columns = ["close", "adj_close", "volume", "high", "low"]
     if not rows:
-        return pd.DataFrame(columns=["close", "adj_close"], index=pd.DatetimeIndex([]), dtype=float)
-    frame = pd.DataFrame(rows, columns=["date", "close", "adj_close"])
+        return pd.DataFrame(columns=columns, index=pd.DatetimeIndex([]), dtype=float)
+    frame = pd.DataFrame(rows, columns=["date", *columns])
     frame["date"] = pd.to_datetime(frame["date"])
+    frame[columns] = frame[columns].apply(pd.to_numeric, errors="coerce")
     return frame.set_index("date")
 
 
@@ -75,14 +79,18 @@ def _shares(positions: list[Position]) -> tuple[dict, dict]:
     return sectors, currencies
 
 
-def compute_signals(session: Session) -> tuple[PortfolioSummary, list[Signal], dict]:
+def compute_signals(session: Session, portfolio_id: int, user_id: int) -> tuple[PortfolioSummary, list[Signal], dict]:
     version = data_version(session)
+    key = (portfolio_id, user_id)
     with _cache_lock:
-        if _cache["key"] == version and _cache["value"] is not None:
-            return _cache["value"]
+        if _cache["version"] != version:
+            _cache["version"] = version
+            _cache["values"] = {}
+        if key in _cache["values"]:
+            return _cache["values"][key]
 
-    analysis = get_analysis_settings(session)
-    portfolio = build_portfolio(session)
+    analysis = get_analysis_settings(session, user_id)
+    portfolio = build_portfolio(session, portfolio_id)
     bench_prices = load_prices(session, analysis["benchmark"])
     benchmark = bench_prices["adj_close"] if not bench_prices.empty else None
     products = {p.isin: p for p in session.scalars(select(Product)).all()}
@@ -105,12 +113,12 @@ def compute_signals(session: Session) -> tuple[PortfolioSummary, list[Signal], d
 
     value = (portfolio, signals, analysis)
     with _cache_lock:
-        _cache["key"] = version
-        _cache["value"] = value
+        if _cache["version"] == version:
+            _cache["values"][key] = value
     return value
 
 
 def clear_cache() -> None:
     with _cache_lock:
-        _cache["key"] = None
-        _cache["value"] = None
+        _cache["version"] = None
+        _cache["values"] = {}

@@ -14,8 +14,9 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.analysis.service import clear_cache
-from app.db import Base, make_engine, make_session_factory
+from app.db import make_engine, make_session_factory
 from app.market.provider import SymbolMatch
+from app.migrations import migrate
 
 TX_HEADER = (
     "Datum,Tijd,Product,ISIN,Beurs,Uitvoeringsplaats,Aantal,Koers,,Lokale waarde,,Waarde,,"
@@ -25,6 +26,7 @@ ACCOUNT_HEADER = "Datum,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,S
 
 ISIN_NL = "NL0000000001"
 ISIN_US = "US0000000002"
+PID = 1
 
 
 def tx_row(date, product, isin, exchange, qty, price, currency, value, fees, total):
@@ -91,11 +93,14 @@ class FakeProvider:
             raise RuntimeError("network down")
         series = self.series.get(ticker)
         if series is None:
-            return pd.DataFrame(columns=["close", "adj_close", "volume"])
+            return pd.DataFrame(columns=["close", "adj_close", "volume", "high", "low"])
         if start is not None:
             series = series[series.index.date >= start]
-        frame = pd.DataFrame({"close": series.values, "adj_close": series.values, "volume": 1000.0},
-                             index=[d.date() for d in series.index])
+        frame = pd.DataFrame(
+            {"close": series.values, "adj_close": series.values, "volume": 1000.0,
+             "high": series.values * 1.01, "low": series.values * 0.99},
+            index=[d.date() for d in series.index],
+        )
         return frame
 
     def dividends(self, ticker):
@@ -128,7 +133,7 @@ class FakeProvider:
 def factory(tmp_path):
     clear_cache()
     engine = make_engine(tmp_path / "test.db")
-    Base.metadata.create_all(engine)
+    migrate(engine)
     yield make_session_factory(engine)
     engine.dispose()
     clear_cache()

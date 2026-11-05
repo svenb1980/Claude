@@ -10,11 +10,11 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Config:
     data_dir: Path
-    password: str
     refresh_hour: int
     timezone: str
     market_provider: str
     scheduler_enabled: bool
+    screener_batch: int
 
     @property
     def db_path(self) -> Path:
@@ -36,11 +36,11 @@ class Config:
 def load_config() -> Config:
     cfg = Config(
         data_dir=Path(os.environ.get("DATA_DIR", "./data")).resolve(),
-        password=os.environ.get("PORTFOLIO_PASSWORD", ""),
         refresh_hour=int(os.environ.get("REFRESH_HOUR", "6")),
         timezone=os.environ.get("TZ", "Europe/Amsterdam"),
         market_provider=os.environ.get("MARKET_PROVIDER", "yfinance"),
         scheduler_enabled=os.environ.get("SCHEDULER_ENABLED", "1") == "1",
+        screener_batch=int(os.environ.get("SCREENER_BATCH", "200")),
     )
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     cfg.upload_dir.mkdir(parents=True, exist_ok=True)

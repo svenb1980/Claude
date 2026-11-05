@@ -135,7 +135,8 @@ def score_quality(m: dict, f: dict) -> FactorResult:
         b.add(payout, [(0.0, 60), (0.3, 100), (0.6, 90), (1.0, 25), (1.5, 0)], 3, "r_payout", "m_payout", 100)
         b.add(m.get("dividend_streak"), [(0, 20), (10, 100)], 3, "r_streak", "m_streak")
     b.add(f.get("profit_margin"), [(-0.05, 0), (0.25, 100)], 2, "r_margin", "m_margin", 100)
-    b.add(f.get("debt_to_equity"), [(30, 100), (300, 0)], 2, "r_debt", "m_debt")
+    if f.get("sector") != "Financial Services":  # Banks run on debt, so the ratio says little.
+        b.add(f.get("debt_to_equity"), [(30, 100), (300, 0)], 2, "r_debt", "m_debt")
     return b.done()
 
 

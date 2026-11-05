@@ -9,7 +9,7 @@ from app.importers.degiro_csv import parse_export
 from app.importers.store import save_export
 from app.market.refresh import refresh_all
 from app.portfolio.positions import build_portfolio, normalise_currency, replay_transactions
-from tests.conftest import ISIN_NL, ISIN_US, make_account_csv, make_transactions_csv
+from tests.conftest import PID, ISIN_NL, ISIN_US, make_account_csv, make_transactions_csv
 
 
 def tx(day, qty, total, fees=1.0, isin="X"):
@@ -56,13 +56,13 @@ def test_minor_currency_units():
 
 
 def test_portfolio_value_with_fx_and_cached_prices(factory, session, provider):
-    save_export(session, parse_export(make_transactions_csv()))
-    save_export(session, parse_export(make_account_csv()))
+    save_export(session, parse_export(make_transactions_csv()), PID)
+    save_export(session, parse_export(make_account_csv()), PID)
     session.commit()
     refresh_all(factory, provider)
     session.expire_all()
 
-    portfolio = build_portfolio(session)
+    portfolio = build_portfolio(session, PID)
     by_isin = {p.isin: p for p in portfolio.positions}
     assert by_isin[ISIN_NL].quantity == 15
     us = by_isin[ISIN_US]

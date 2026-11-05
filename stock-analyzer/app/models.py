@@ -1,17 +1,43 @@
-"""Database tables."""
+"""Database tables.
+
+Market data (products, prices, dividends, FX, screener) is shared by all users.
+Everything derived from a person's exports hangs off a portfolio, and every query
+for it filters on that portfolio.
+"""
 from __future__ import annotations
 
 import datetime as dt
 import json
 
-from sqlalchemy import Date, DateTime, Float, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(256))
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Raised when the password changes, which logs out existing sessions.
+    session_version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.now)
+
+
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.now)
+
+
 class Product(Base):
-    """A security known from your DEGIRO exports, keyed by ISIN."""
+    """A security known from an export, keyed by ISIN. Shared market data."""
 
     __tablename__ = "products"
 
@@ -38,6 +64,7 @@ class Transaction(Base):
 
     __tablename__ = "transactions"
 
+    portfolio_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     row_hash: Mapped[str] = mapped_column(String(40), primary_key=True)
     date: Mapped[dt.date] = mapped_column(Date, index=True)
     time: Mapped[str] = mapped_column(String(8), default="")
@@ -58,6 +85,7 @@ class AccountEntry(Base):
 
     __tablename__ = "account_entries"
 
+    portfolio_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     row_hash: Mapped[str] = mapped_column(String(40), primary_key=True)
     date: Mapped[dt.date] = mapped_column(Date, index=True)
     value_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
@@ -78,6 +106,8 @@ class Price(Base):
     close: Mapped[float] = mapped_column(Float)
     adj_close: Mapped[float] = mapped_column(Float)
     volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    low: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class DividendHistory(Base):
@@ -100,8 +130,28 @@ class FxRate(Base):
     eur_per_unit: Mapped[float] = mapped_column(Float)
 
 
+class ScreenerStock(Base):
+    """A stock the screener searches, with its latest calculated inputs."""
+
+    __tablename__ = "screener_stocks"
+
+    ticker: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    indices: Mapped[str] = mapped_column(String(200), default="")  # comma separated
+    source: Mapped[str] = mapped_column(String(8), default="list")  # list | manual
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sector: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    quote_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    isin: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    data_json: Mapped[str] = mapped_column(Text, default="{}")  # metrics + fundamentals
+    last_refresh: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    refresh_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class Setting(Base):
-    """Small JSON values: score weights, benchmark, job status."""
+    """Small JSON values. Per-user values use a key such as `analysis:3`."""
 
     __tablename__ = "settings"
 
