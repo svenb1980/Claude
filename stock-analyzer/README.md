@@ -3,7 +3,8 @@
 A self-hosted, multi-user tool that reads DEGIRO exports, analyses each holding against its market
 history, labels it Verkopen / Houden / Bijkopen with the reasons shown, ranks stocks outside your
 portfolio, draws sell levels on share charts, and keeps a dividend calendar. The interface is in
-Dutch. It cannot log in to DEGIRO or place orders.
+Dutch. It cannot log in to DEGIRO or place orders. An optional page lets you ask Claude about terms,
+market history and the considerations around buying and selling.
 
 > **Not financial advice.** Signals, buy candidates and sell levels are the output of rules you can
 > inspect. The defaults are starting points, not recommendations, and have not been shown to predict
@@ -103,6 +104,30 @@ compared with a normal period of the same length, and says when there's no clear
 - Tested on a few stocks, a break of the stop line showed no consistent drop afterwards. Don't assume these
   lines predict anything for a particular stock; read the evidence shown for it.
 - The page shows the price rise needed just to cover your order costs. Most day traders lose money.
+
+## Vraag Claude
+
+An optional chat page for explaining terms, market history and what the signals mean. Its
+instructions are the skill in `app/ask/skills/beurs-expert/SKILL.md`, which you can edit like any
+other text file. It lays out the arguments on buying or selling but doesn't tell you what to do:
+Claude is not a licensed adviser and doesn't know your full situation.
+
+**Setting it up.** Create a key at [platform.claude.com](https://platform.claude.com) and set it as
+`ANTHROPIC_API_KEY` for the container, then restart. API use is billed per question, separately from
+a Claude subscription. The default model, `claude-opus-5-5`, costs $4 per million input tokens and
+$20 per million output tokens at the time of writing. Change it with `ASK_MODEL`, and limit
+questions per user per day with `ASK_DAILY_LIMIT`. The key is shared, so its owner pays for every user.
+
+Don't keep the key in a `.env` file in this OneDrive folder. Set it in your shell before
+`docker compose up`, or keep the compose project elsewhere on the machine that runs it.
+
+**What leaves your machine.** Every question goes to Anthropic. Nothing from your portfolio goes along
+unless you pick it for that question, and the page shows the exact text first. A shared stock or
+portfolio includes names, ISINs, percentages, signals and their reasons, but no amounts, quantities or
+account names. Conversations stay in the browser tab and aren't stored or logged by this tool.
+
+**Limits.** Claude has no live prices or news beyond what the app shares, and only stocks you hold can
+be shared. Its historical figures come from memory, so check them before relying on them.
 
 ## Known limitations
 

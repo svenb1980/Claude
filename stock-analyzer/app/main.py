@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 PUBLIC_PATHS = ("/login", "/setup", "/healthz", "/static/")
 
 
-def create_app(config: Config | None = None, provider=None, seed: bool = True) -> FastAPI:
+def create_app(config: Config | None = None, provider=None, seed: bool = True, ask_client=None) -> FastAPI:
     config = config or load_config()
     engine = make_engine(config.db_path)
     migrate(engine)
@@ -62,6 +62,7 @@ def create_app(config: Config | None = None, provider=None, seed: bool = True) -
         return cached_provider["value"]
 
     app.state.get_provider = _get_provider
+    app.state.ask_client = ask_client
 
     @app.middleware("http")
     async def guard(request: Request, call_next):

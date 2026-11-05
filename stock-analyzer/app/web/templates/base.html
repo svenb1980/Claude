@@ -11,7 +11,7 @@
   <a class="brand" href="/">{{ t.app_name }}</a>
   {% if user %}
   <nav>
-    {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/screener", t.nav_screener), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
+    {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/screener", t.nav_screener), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/ask", t.nav_ask), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
     <a href="{{ href }}" {% if path == href %}aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>

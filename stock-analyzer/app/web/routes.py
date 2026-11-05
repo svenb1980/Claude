@@ -19,7 +19,8 @@ from urllib.parse import urlsplit
 
 import pandas as pd
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import StrictUndefined
 from sqlalchemy import func, select
@@ -31,6 +32,7 @@ from app.analysis.levels import break_even_move_pct, daily_levels, intraday_leve
 from app.analysis.scoring import FACTORS
 from app.analysis.screener import PRESETS, SCREEN_FACTORS, portfolio_profile, run_screen, score_stock, _label
 from app.analysis.service import compute_signals, load_prices
+from app.ask import service as ask
 from app.db import session_scope
 from app.dividends.calendar import expected_dividends, month_view, received_dividends, year_totals
 from app.i18n.nl import T
@@ -438,6 +440,79 @@ def stock_page(request: Request, isin: str):
         signal=signal, position=signal.position, result=signal.result, metrics=signal.metrics,
         analysis=analysis, received=received, **chart,
     )
+
+
+# --- Vraag Claude -----------------------------------------------------------
+
+def _ask_client(request: Request):
+    """The Claude client, or None while no API key is set."""
+    state = request.app.state
+    if state.ask_client is None and ask.has_credentials():
+        state.ask_client = ask.make_client()
+    return state.ask_client
+
+
+@router.get("/ask", response_class=HTMLResponse)
+def ask_page(request: Request, scope: str = ask.SCOPE_NONE):
+    with session_scope(_factory(request)) as session:
+        current = _current_portfolio(request, session)
+        options = ask.scope_options(session, current.id, _user(request).id)
+        portfolio_id = current.id
+    if scope not in {ask.SCOPE_NONE, ask.SCOPE_PORTFOLIO, *(isin for isin, _ in options)}:
+        scope = ask.SCOPE_NONE
+    config = request.app.state.config
+    return _render(
+        request, "ask.html",
+        ready=_ask_client(request) is not None, options=options, scope=scope, portfolio_id=portfolio_id,
+        scope_none=ask.SCOPE_NONE, scope_portfolio=ask.SCOPE_PORTFOLIO,
+        max_chars=ask.MAX_QUESTION_CHARS, max_messages=ask.MAX_MESSAGES, daily_limit=config.ask_daily_limit,
+    )
+
+
+@router.get("/api/ask/context")
+def ask_context(request: Request, scope: str = ask.SCOPE_NONE):
+    """Shows the user exactly what would go along with a question."""
+    with session_scope(_factory(request)) as session:
+        current = _current_portfolio(request, session)
+        return {"context": ask.build_context(session, current.id, _user(request).id, scope)}
+
+
+def _prepare_question(request: Request, scope: str) -> tuple[bool, str | None]:
+    config = request.app.state.config
+    with session_scope(_factory(request)) as session:
+        user_id = _user(request).id
+        if not ask.use_daily_allowance(session, user_id, config.ask_daily_limit):
+            return False, None
+        current = _current_portfolio(request, session)
+        return True, ask.build_context(session, current.id, user_id, scope)
+
+
+@router.post("/api/ask")
+async def ask_question(request: Request):
+    client = _ask_client(request)
+    if client is None:
+        return JSONResponse({"error": T["ask_not_ready_title"]}, status_code=503)
+    body = await request.body()
+    if len(body) > ask.MAX_BODY_BYTES:
+        return JSONResponse({"error": T["ask_error_conversation"]}, status_code=413)
+    try:
+        payload = json.loads(body)
+        messages = ask.validate_messages(payload.get("messages"))
+    except (ValueError, AttributeError):
+        return JSONResponse({"error": T["ask_error_conversation"]}, status_code=400)
+    scope = str(payload.get("scope", ask.SCOPE_NONE))
+    allowed, context = await run_in_threadpool(_prepare_question, request, scope)
+    if not allowed:
+        limit = request.app.state.config.ask_daily_limit
+        return JSONResponse({"error": T["ask_limit"].format(limit=limit)}, status_code=429)
+    system = ask.build_system(ask.load_skill(), context)
+    model = request.app.state.config.ask_model
+
+    def lines():
+        for event in ask.stream_answer(client, model, system, messages):
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson")
 
 
 # --- Screener --------------------------------------------------------------

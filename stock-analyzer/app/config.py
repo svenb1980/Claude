@@ -15,6 +15,8 @@ class Config:
     market_provider: str
     scheduler_enabled: bool
     screener_batch: int
+    ask_model: str = "claude-opus-5-5"
+    ask_daily_limit: int = 50
 
     @property
     def db_path(self) -> Path:
@@ -41,6 +43,8 @@ def load_config() -> Config:
         market_provider=os.environ.get("MARKET_PROVIDER", "yfinance"),
         scheduler_enabled=os.environ.get("SCHEDULER_ENABLED", "1") == "1",
         screener_batch=int(os.environ.get("SCREENER_BATCH", "200")),
+        ask_model=os.environ.get("ASK_MODEL", "claude-opus-5-5"),
+        ask_daily_limit=int(os.environ.get("ASK_DAILY_LIMIT", "50")),
     )
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     cfg.upload_dir.mkdir(parents=True, exist_ok=True)

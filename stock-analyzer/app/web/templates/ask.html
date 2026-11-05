@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ t.ask_title }} · {{ t.app_name }}{% endblock %}
+{% block content %}
+<h1>{{ t.ask_title }}</h1>
+<p class="muted">{{ t.ask_intro }}</p>
+
+{% if not ready %}
+<section class="card ask-card">
+  <h2>{{ t.ask_not_ready_title }}</h2>
+  <p>{{ t.ask_not_ready }}</p>
+</section>
+{% else %}
+<section class="card ask-card" id="ask"
+         data-store="ask:{{ user.id }}:{{ portfolio_id }}"
+         data-max-messages="{{ max_messages }}"
+         data-text-you="{{ t.ask_you }}" data-text-claude="{{ t.ask_claude }}"
+         data-text-thinking="{{ t.ask_thinking }}" data-text-truncated="{{ t.ask_truncated }}"
+         data-text-tokens="{{ t.ask_tokens }}" data-text-full="{{ t.ask_full }}"
+         data-text-login="{{ t.ask_error_login }}" data-text-service="{{ t.ask_error_service }}"
+         data-text-connection="{{ t.ask_error_connection }}" data-text-preview-empty="{{ t.ask_preview_empty }}">
+  <div class="ask-log" id="ask-log" aria-live="polite"></div>
+  <div id="ask-examples">
+    <div class="muted small">{{ t.ask_suggestions }}</div>
+    <div class="ask-examples">
+      {% for example in [t.ask_example_term, t.ask_example_history, t.ask_example_sell, t.ask_example_buy] %}
+      <button type="button" data-example="{{ example }}">{{ example }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  <p class="notice" id="ask-error" role="alert" hidden></p>
+  <form class="ask-form" id="ask-form">
+    <label class="visually-hidden" for="ask-question">{{ t.ask_label }}</label>
+    <textarea id="ask-question" maxlength="{{ max_chars }}" placeholder="{{ t.ask_placeholder }}" required></textarea>
+    <div class="ask-controls">
+      <label for="ask-scope">{{ t.ask_share }}</label>
+      <select id="ask-scope">
+        <option value="{{ scope_none }}" {% if scope == scope_none %}selected{% endif %}>{{ t.ask_share_none }}</option>
+        <option value="{{ scope_portfolio }}" {% if scope == scope_portfolio %}selected{% endif %}>{{ t.ask_share_portfolio }}</option>
+        {% for isin, name in options %}
+        <option value="{{ isin }}" {% if scope == isin %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+      <div class="ask-buttons">
+        <button type="button" id="ask-new">{{ t.ask_new }}</button>
+        <button class="primary" id="ask-send">{{ t.ask_send }}</button>
+      </div>
+    </div>
+  </form>
+  <details class="ask-preview small" id="ask-preview">
+    <summary>{{ t.ask_preview }}</summary>
+    <pre id="ask-preview-text"></pre>
+  </details>
+</section>
+<p class="muted small ask-card">{{ t.ask_privacy }}</p>
+<script src="/static/ask.js"></script>
+{% endif %}
+{% endblock %}

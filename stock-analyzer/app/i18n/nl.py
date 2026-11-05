@@ -9,6 +9,54 @@ T = {
     "nav_backtest": "Backtest",
     "nav_import": "Importeren",
     "nav_settings": "Instellingen",
+    "nav_ask": "Vraag Claude",
+    # Vraag Claude
+    "ask_title": "Vraag Claude",
+    "ask_intro": (
+        "Stel je vraag over begrippen, de beursgeschiedenis of de afweging rond kopen en verkopen. "
+        "Claude legt uit en zet de argumenten op een rij, maar zegt niet wat jij moet doen."
+    ),
+    "ask_privacy": (
+        "Je vraag gaat naar Anthropic, het bedrijf achter Claude. Standaard gaat er niets uit je "
+        "portefeuille mee. Kies je een aandeel of je portefeuille, dan gaan namen, ISIN's, percentages "
+        "en signalen mee, maar geen bedragen, aantallen of je naam. Deze server bewaart je gesprekken niet."
+    ),
+    "ask_share": "Meesturen",
+    "ask_share_none": "Niets uit mijn portefeuille",
+    "ask_share_portfolio": "Mijn hele portefeuille",
+    "ask_preview": "Bekijk wat er wordt meegestuurd",
+    "ask_preview_empty": "Alleen je vraag en het gesprek tot nu toe.",
+    "ask_label": "Je vraag",
+    "ask_placeholder": "Bijvoorbeeld: wat betekent een payout ratio van 90%?",
+    "ask_send": "Versturen",
+    "ask_new": "Nieuw gesprek",
+    "ask_thinking": "Claude denkt na…",
+    "ask_you": "Jij",
+    "ask_claude": "Claude",
+    "ask_truncated": "Dit antwoord is afgekapt omdat het te lang werd. Vraag gerust om het vervolg.",
+    "ask_tokens": "{input} tokens in, {output} tokens uit",
+    "ask_full": "Dit gesprek is vol. Begin een nieuw gesprek om verder te gaan.",
+    "ask_about_stock": "Vraag Claude over dit aandeel",
+    "ask_suggestions": "Voorbeelden",
+    "ask_example_term": "Wat is een P/E-ratio en wanneer zegt die weinig?",
+    "ask_example_history": "Hoe lang duurde het herstel na de grootste beurscrashes?",
+    "ask_example_sell": "Waar let ik op als ik overweeg een aandeel te verkopen?",
+    "ask_example_buy": "Wanneer is een hoog dividendrendement juist een waarschuwing?",
+    "ask_not_ready_title": "Vraag Claude is nog niet ingesteld",
+    "ask_not_ready": (
+        "De beheerder moet hiervoor eenmalig een API-sleutel van Anthropic instellen als "
+        "ANTHROPIC_API_KEY en de app opnieuw starten. Het gebruik wordt per vraag aan die sleutel "
+        "berekend, los van een Claude-abonnement. Zie de README."
+    ),
+    "ask_limit": "Je hebt het maximum van {limit} vragen per dag bereikt. Morgen kun je weer verder.",
+    "ask_refused": "Claude kan deze vraag niet beantwoorden. Probeer het anders te formuleren.",
+    "ask_error_key": "De API-sleutel wordt niet geaccepteerd. Vraag de beheerder die te controleren.",
+    "ask_error_model": "Het ingestelde Claude-model bestaat niet of is niet beschikbaar voor deze sleutel.",
+    "ask_error_busy": "Claude krijgt nu te veel verzoeken of het tegoed is op. Probeer het later opnieuw.",
+    "ask_error_conversation": "Dit gesprek kan niet verder. Begin een nieuw gesprek.",
+    "ask_error_service": "Claude is nu niet bereikbaar. Probeer het later opnieuw.",
+    "ask_error_connection": "Geen verbinding met Claude. Controleer de internetverbinding en probeer het opnieuw.",
+    "ask_error_login": "Je bent uitgelogd. Log opnieuw in en stel je vraag nog een keer.",
     "logout": "Uitloggen",
     "disclaimer": (
         "Geen financieel advies. Signalen zijn de uitkomst van rekenregels die je zelf kunt "
