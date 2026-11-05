@@ -12,6 +12,24 @@
   const axisTime = new Intl.DateTimeFormat("nl-NL", { weekday: "short", hour: "2-digit", minute: "2-digit" });
   const pctf = new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const LEVEL_WINDOW = 0.35; // Lines further than this from the price would flatten the chart.
+  const NARROW = 560; // Below this width there is no room for labels beside the plot.
+
+  // Charts are drawn at the real width of their box, so text stays readable on a phone.
+  function boxWidth(box) {
+    return Math.max(280, Math.round(box.clientWidth || 900));
+  }
+
+  function redrawOnResize(box, draw) {
+    if (!window.ResizeObserver) return;
+    let last = boxWidth(box);
+    new ResizeObserver(() => {
+      const width = boxWidth(box);
+      if (Math.abs(width - last) > 8) {
+        last = width;
+        draw();
+      }
+    }).observe(box);
+  }
 
   function el(name, attrs, parent) {
     const node = document.createElementNS(SVG_NS, name);
@@ -90,7 +108,10 @@
     const fmt = config.restate ? signedPct : (v) => nf.format(v);
 
     const hasLevels = (config.levels || []).length > 0;
-    const W = 900, H = 340, M = { l: 52, r: hasLevels || config.restate ? 150 : 16, t: 10, b: 26 };
+    const W = boxWidth(box);
+    const narrow = W < NARROW;
+    const H = Math.round(Math.min(380, Math.max(230, W * 0.4)));
+    const M = { l: 48, r: narrow ? 8 : hasLevels || config.restate ? 150 : 16, t: 10, b: 26 };
     const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, box);
 
     const dates = points.map((p) => new Date(p[dateKey]));
@@ -112,7 +133,7 @@
 
     const spanDays = (dates[dates.length - 1] - dates[0]) / 86400000;
     const axis = config.intraday ? axisTime : spanDays < 200 ? axisShort : axisFull;
-    const labelCount = 5;
+    const labelCount = narrow ? 2 : 5;
     for (let k = 0; k <= labelCount; k++) {
       const i = Math.round((k / labelCount) * (points.length - 1));
       const anchor = k === 0 ? "start" : k === labelCount ? "end" : "middle";
@@ -135,6 +156,15 @@
     spreadLabels(labelled, 15, M.t + 10, H - M.b);
     labelled.forEach((l) => {
       el("line", { x1: M.l, x2: W - M.r, y1: l.y, y2: l.y, stroke: `var(--series-${l.slot})`, "stroke-width": 1.5, "stroke-dasharray": "6 4" }, svg);
+      if (narrow) {
+        // Beside the plot there's no room, so the name and price sit on the line itself.
+        const onLine = el("text", {
+          x: W - M.r - 2, y: l.labelY - 6, "text-anchor": "end", "font-size": 11, fill: "var(--text-primary)",
+          stroke: "var(--surface-1)", "stroke-width": 3, "paint-order": "stroke",
+        }, svg);
+        onLine.textContent = `${l.label} ${nf.format(l.price)}`;
+        return;
+      }
       if (Math.abs(l.labelY - 4 - l.y) > 1) {
         el("line", { x1: W - M.r, x2: W - M.r + 6, y1: l.y, y2: l.labelY - 4, stroke: `var(--series-${l.slot})`, "stroke-width": 1 }, svg);
       }
@@ -149,7 +179,21 @@
         return { series: s, value: last, y: y(last), labelY: y(last) + 4 };
       }).filter((e) => e.value != null);
       spreadLabels(ends, 15, M.t + 10, H - M.b);
-      ends.forEach((e) => {
+      if (narrow) {
+        // The latest value of each line goes above the chart, and replaces the legend there.
+        const row = document.createElement("div");
+        row.className = "chart-legend chart-ends";
+        ends.forEach((e) => {
+          const item = document.createElement("span");
+          const mark = document.createElement("i");
+          mark.style.background = `var(--series-${e.series.slot})`;
+          const value = document.createElement("b");
+          value.textContent = signedPct(e.value);
+          item.append(mark, `${e.series.label} `, value);
+          row.appendChild(item);
+        });
+        box.insertBefore(row, svg);
+      } else ends.forEach((e) => {
         if (Math.abs(e.labelY - 4 - e.y) > 1) {
           el("line", { x1: W - M.r, x2: W - M.r + 6, y1: e.y, y2: e.labelY - 4, stroke: `var(--series-${e.series.slot})`, "stroke-width": 1 }, svg);
         }
@@ -197,7 +241,7 @@
       tip.style.display = "block";
       const scale = rect.width / W;
       const left = x(i) * scale;
-      tip.style.left = left > rect.width / 2 ? `${left - tip.offsetWidth - 12}px` : `${left + 12}px`;
+      tip.style.left = `${Math.max(0, left > rect.width / 2 ? left - tip.offsetWidth - 12 : left + 12)}px`;
     });
   }
 
@@ -224,6 +268,7 @@
 
     const box = document.createElement("div");
     box.className = "chart-box";
+    if (config.restate) container.classList.add("chart-restate");
 
     if (config.ranges) {
       const bar = document.createElement("div");
@@ -247,9 +292,11 @@
       }
       container.append(bar, box);
       select(start, buttons.find((b) => b.range === start).button);
+      redrawOnResize(box, () => drawLine(box, config, sliceRange(all, config.currentRange, config.dateKey || "d")));
     } else {
       container.appendChild(box);
       drawLine(box, config, all);
+      redrawOnResize(box, () => drawLine(box, config, all));
     }
   }
 
@@ -261,10 +308,18 @@
       { key: "expected", label: config.expected, slot: 2 },
     ];
     legend(container, series);
-    const W = 900, H = 240, M = { l: 52, r: 8, t: 10, b: 24 };
     const box = document.createElement("div");
     box.className = "chart-box";
     container.appendChild(box);
+    drawBars(box, config, rows, series);
+    redrawOnResize(box, () => drawBars(box, config, rows, series));
+  }
+
+  function drawBars(box, config, rows, series) {
+    box.textContent = "";
+    const W = boxWidth(box);
+    const H = Math.round(Math.min(260, Math.max(190, W * 0.28)));
+    const M = { l: 44, r: 8, t: 10, b: 24 };
     const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, box);
     const max = Math.max(1, ...rows.map((r) => r.received + r.expected));
     const y = (v) => M.t + (1 - v / max) * (H - M.t - M.b);
@@ -283,8 +338,8 @@
 
     rows.forEach((row, i) => {
       const cx = M.l + slot * i + slot / 2;
-      const label = el("text", { x: cx, y: H - 7, "text-anchor": "middle", "font-size": 12, fill: "var(--text-secondary)" }, svg);
-      label.textContent = config.months[i];
+      const label = el("text", { x: cx, y: H - 7, "text-anchor": "middle", "font-size": W < NARROW ? 10 : 12, fill: "var(--text-secondary)" }, svg);
+      label.textContent = W < NARROW ? config.months[i].slice(0, 1) : config.months[i];
       let base = 0;
       series.forEach((s) => {
         const value = row[s.key];
@@ -311,7 +366,7 @@
         tip.style.display = "block";
         const rect = svg.getBoundingClientRect();
         const left = (cx / W) * rect.width;
-        tip.style.left = left > rect.width / 2 ? `${left - tip.offsetWidth - 12}px` : `${left + 12}px`;
+        tip.style.left = `${Math.max(0, left > rect.width / 2 ? left - tip.offsetWidth - 12 : left + 12)}px`;
       });
       hit.addEventListener("pointerleave", () => { tip.style.display = "none"; });
     });

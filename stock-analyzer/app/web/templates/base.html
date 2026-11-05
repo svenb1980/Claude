@@ -3,28 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcfb">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1a19">
   <title>{% block title %}{{ t.app_name }}{% endblock %}</title>
+  <script>document.documentElement.classList.add("js")</script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="topbar">
   <a class="brand" href="/">{{ t.app_name }}</a>
   {% if user %}
-  <nav>
-    {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/screener", t.nav_screener), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/ask", t.nav_ask), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
-    <a href="{{ href }}" {% if path == href %}aria-current="page"{% endif %}>{{ label }}</a>
-    {% endfor %}
-  </nav>
-  <div class="topbar-right">
-    <form method="post" action="/portfolios/select" class="portfolio-switch">
-      <label class="visually-hidden" for="portfolio-select">{{ t.nav_portfolio }}</label>
-      <select id="portfolio-select" name="portfolio_id" onchange="this.form.submit()">
-        {% for p in nav_portfolios %}<option value="{{ p.id }}" {% if p.id == current_portfolio_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
-      </select>
-      <noscript><button>OK</button></noscript>
-    </form>
-    <a href="/account" {% if path == "/account" %}aria-current="page"{% endif %}>{{ user.username }}</a>
-    <form method="post" action="/logout"><button class="link">{{ t.logout }}</button></form>
+  <button type="button" class="menu-toggle" aria-expanded="false" aria-controls="site-menu" aria-label="{{ t.nav_menu }}">
+    <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
+  </button>
+  <div class="site-menu" id="site-menu">
+    <nav aria-label="{{ t.nav_menu }}">
+      {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/screener", t.nav_screener), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/ask", t.nav_ask), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
+      <a href="{{ href }}" {% if path == href %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="topbar-right">
+      <form method="post" action="/portfolios/select" class="portfolio-switch">
+        <label class="visually-hidden" for="portfolio-select">{{ t.nav_portfolio }}</label>
+        <select id="portfolio-select" name="portfolio_id" onchange="this.form.submit()">
+          {% for p in nav_portfolios %}<option value="{{ p.id }}" {% if p.id == current_portfolio_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+        </select>
+        <noscript><button>OK</button></noscript>
+      </form>
+      <a href="/account" {% if path == "/account" %}aria-current="page"{% endif %}>{{ user.username }}</a>
+      <form method="post" action="/logout"><button class="link">{{ t.logout }}</button></form>
+    </div>
   </div>
   {% endif %}
 </header>
@@ -32,6 +40,7 @@
 {% block content %}{% endblock %}
 </main>
 <footer>{{ t.disclaimer }}</footer>
+<script src="/static/app.js"></script>
 <script src="/static/charts.js"></script>
 </body>
 </html>

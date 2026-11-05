@@ -46,6 +46,16 @@
     </div>
     {% endfor %}
   </div>
+  <ul class="cal-list">
+    {% for week in weeks %}{% for cell in week %}{% if cell.date %}
+    {% for item in cell.received %}
+    <li><span class="chip chip-received" aria-hidden="true"></span><span class="cal-list-date">{{ cell.date.day }}</span><span class="cal-list-name">{{ item.name }}</span><strong>{{ item.net_eur | eur }}</strong></li>
+    {% endfor %}
+    {% for item in cell.expected %}
+    <li><span class="chip chip-expected" aria-hidden="true"></span><span class="cal-list-date">{{ cell.date.day }}</span><span class="cal-list-name">{{ item.name }}</span><strong>{% if item.status != "confirmed" %}~ {% endif %}{{ item.gross_eur | eur }}</strong></li>
+    {% endfor %}
+    {% endif %}{% endfor %}{% endfor %}
+  </ul>
 </section>
 
 <section class="card">

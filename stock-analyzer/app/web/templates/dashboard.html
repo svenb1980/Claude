@@ -37,7 +37,7 @@
   {% if comparison.available %}
   <div class="market-compare" data-failed="{{ t.cmp_failed }}" data-subject-label="{{ t.cmp_subject }}" data-loading="{{ t.intra_loading }}"></div>
   <div class="table-wrap">
-  <table class="compare-table">
+  <table class="compare-table matrix">
     <thead><tr><th>{{ t.cmp_col_line }}</th>{% for name in periods %}<th class="num">{{ t["period_" ~ name] }}</th>{% endfor %}</tr></thead>
     <tbody>
     {% for row in comparison.table %}
@@ -82,17 +82,17 @@
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>{{ t.col_product }}</th><th class="num">{{ t.col_qty }}</th><th class="num">{{ t.col_value }}</th>
-      <th class="num">{{ t.col_cost }}</th><th class="num">{{ t.col_result }}</th><th class="num">{{ t.col_result_pct }}</th>
+      <th>{{ t.col_product }}</th><th class="num phone-hide">{{ t.col_qty }}</th><th class="num">{{ t.col_value }}</th>
+      <th class="num phone-hide">{{ t.col_cost }}</th><th class="num">{{ t.col_result }}</th><th class="num">{{ t.col_result_pct }}</th>
       <th class="num">{{ t.col_weight }}</th><th>{{ t.col_signal }}</th>
     </tr></thead>
     <tbody>
     {% for p in portfolio.positions %}
       <tr>
         <td><a href="/stocks/{{ p.isin }}">{{ p.name }}</a><div class="muted small">{{ p.ticker or p.isin }}</div></td>
-        <td class="num">{{ p.quantity | quantity }}</td>
+        <td class="num phone-hide">{{ p.quantity | quantity }}</td>
         <td class="num">{{ p.value_eur | eur }}</td>
-        <td class="num">{{ p.cost_eur | eur }}</td>
+        <td class="num phone-hide">{{ p.cost_eur | eur }}</td>
         <td class="num {{ m.signed_class(p.unrealised_eur) }}">{{ p.unrealised_eur | signed_eur }}</td>
         <td class="num {{ m.signed_class(p.unrealised_pct) }}">{{ p.unrealised_pct | pct }}</td>
         <td class="num">{{ p.weight_pct | pct }}</td>

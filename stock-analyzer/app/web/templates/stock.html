@@ -11,7 +11,7 @@
   <div class="headline-signal">
     {{ m.signal_badge(result.label) }}
     <div class="muted small">{{ t.col_score }} {{ result.total | number(0) }} · {{ t.col_confidence }} {{ result.confidence | pct(0) }}</div>
-    <div class="small"><a href="/ask?scope={{ position.isin }}">{{ t.ask_about_stock }}</a></div>
+    <a class="button" href="/ask?scope={{ position.isin }}">{{ t.ask_about_stock }}</a>
   </div>
 </div>
 

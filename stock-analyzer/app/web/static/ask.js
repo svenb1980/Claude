@@ -15,6 +15,7 @@
   const preview = document.getElementById("ask-preview");
   const previewText = document.getElementById("ask-preview-text");
   const maxMessages = Number(text.maxMessages);
+  const RULE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
 
   let messages = [];
   let busy = false;
@@ -63,6 +64,9 @@
       const line = lines[i];
       if (!line.trim()) {
         i += 1;
+      } else if (RULE.test(line)) {
+        target.append(document.createElement("hr"));
+        i += 1;
       } else if (/^#{1,6}\s/.test(line)) {
         const heading = document.createElement("h3");
         inline(heading, line.replace(/^#+\s*/, ""));
@@ -97,7 +101,7 @@
       } else {
         const paragraph = document.createElement("p");
         const parts = [];
-        while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*([-*•]|\d+[.)])\s+|\s*\|)/.test(lines[i])) {
+        while (i < lines.length && lines[i].trim() && !RULE.test(lines[i]) && !/^(#{1,6}\s|\s*([-*•]|\d+[.)])\s+|\s*\|)/.test(lines[i])) {
           parts.push(lines[i].trim());
           i += 1;
         }

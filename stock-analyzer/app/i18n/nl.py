@@ -9,6 +9,7 @@ T = {
     "nav_backtest": "Backtest",
     "nav_import": "Importeren",
     "nav_settings": "Instellingen",
+    "nav_menu": "Menu",
     "nav_ask": "Vraag Claude",
     # Vraag Claude
     "ask_title": "Vraag Claude",
