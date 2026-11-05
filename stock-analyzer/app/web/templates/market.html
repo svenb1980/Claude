@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ stock.name }} · {{ t.app_name }}{% endblock %}
 {% block content %}
-<p><a href="/screener?preset={{ preset }}">← {{ t.scr_back }}</a></p>
+<a class="back" href="/screener?preset={{ preset }}">← {{ t.scr_back }}</a>
 <div class="page-head">
   <div>
     <h1>{{ stock.name }}</h1>
@@ -14,11 +14,11 @@
 </div>
 {% if stock.refresh_error %}<p class="notice">{{ stock.refresh_error }}</p>{% endif %}
 
+<div data-tabs>
 {% include "_chart.html" %}
 
 {% if factors %}
-<div class="columns">
-  <section class="card">
+  <section class="card" data-tab="{{ t.tab_score }}">
     <h2>{{ t.scr_breakdown.format(preset=t["preset_" ~ preset]) }}</h2>
     {% for factor in factors %}
     {% if weights.get(factor.key, 0) > 0 %}
@@ -39,7 +39,7 @@
     {% endif %}
     {% endfor %}
   </section>
-  <section class="card">
+  <section class="card" data-tab="{{ t.tab_figures }}">
     <h2>{{ t.stock_metrics }}</h2>
     <dl class="metrics">
       <dt>{{ t.metric_history_years }}</dt><dd>{{ t.metric_years.format(n=metrics.get("history_years", 0) | number(1)) if metrics.get("history_years") else t.none }}</dd>
@@ -51,6 +51,6 @@
       <dt>{{ t.metric_streak }}</dt><dd>{{ metrics.get("dividend_streak") if metrics.get("dividend_streak") is not none else t.none }}</dd>
     </dl>
   </section>
-</div>
 {% else %}<p class="muted">{{ t.scr_no_data }}</p>{% endif %}
+</div>
 {% endblock %}

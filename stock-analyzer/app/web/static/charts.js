@@ -148,7 +148,7 @@
         path += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(p[s.key]).toFixed(1)}`;
         pen = true;
       });
-      el("path", { d: path, fill: "none", stroke: `var(--series-${s.slot})`, "stroke-width": s.slot === 1 ? 2 : 1.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      el("path", { d: path, fill: "none", stroke: `var(--series-${s.slot})`, "stroke-width": s.slot === 1 ? 2.25 : 1.25, opacity: s.slot === 1 || !config.restate ? 1 : 0.75, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
     });
 
     // Sell lines: dashed, with a direct label on the right. Text stays in ink colours.
@@ -275,7 +275,7 @@
       bar.className = "chart-ranges";
       const usable = config.ranges.filter((r, i) => r.months !== undefined || i === 0 || all.length > config.ranges[i - 1].days);
       const start = usable.find((r) => r === config.currentRange)
-        || usable.find((r) => r.days === config.defaultRange || (r.months !== undefined && r.months === config.defaultMonths))
+        || usable.find((r) => (r.days !== undefined && r.days === config.defaultRange) || (r.months !== undefined && r.months === config.defaultMonths))
         || usable[usable.length - 1];
       const buttons = usable.map((range) => {
         const button = document.createElement("button");

@@ -1,45 +1,74 @@
 <!DOCTYPE html>
 <html lang="nl">
+{% import "_macros.html" as ui with context %}
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcfb">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1a19">
   <title>{% block title %}{{ t.app_name }}{% endblock %}</title>
   <script>document.documentElement.classList.add("js")</script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header class="topbar">
+{% if user %}
+{% include "_icons.html" %}
+{# A stock page belongs to Signalen and a candidate's page to Koopkandidaten. #}
+{% set active = "/signals" if path.startswith("/stocks/") else ("/screener" if path.startswith("/market/") else path) %}
+{% macro nav_link(href, label, icon_name, cls="") %}
+<a href="{{ href }}" class="{{ cls }}" {% if active == href %}aria-current="page"{% endif %}>{{ ui.icon(icon_name) }}<span>{{ label }}</span></a>
+{% endmacro %}
+<aside class="sidebar" id="site-menu">
   <a class="brand" href="/">{{ t.app_name }}</a>
-  {% if user %}
-  <button type="button" class="menu-toggle" aria-expanded="false" aria-controls="site-menu" aria-label="{{ t.nav_menu }}">
-    <span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span>
-  </button>
-  <div class="site-menu" id="site-menu">
-    <nav aria-label="{{ t.nav_menu }}">
-      {% for href, label in [("/", t.nav_dashboard), ("/signals", t.nav_signals), ("/screener", t.nav_screener), ("/dividends", t.nav_dividends), ("/backtest", t.nav_backtest), ("/ask", t.nav_ask), ("/import", t.nav_import), ("/settings", t.nav_settings)] %}
-      <a href="{{ href }}" {% if path == href %}aria-current="page"{% endif %}>{{ label }}</a>
-      {% endfor %}
-    </nav>
-    <div class="topbar-right">
-      <form method="post" action="/portfolios/select" class="portfolio-switch">
-        <label class="visually-hidden" for="portfolio-select">{{ t.nav_portfolio }}</label>
-        <select id="portfolio-select" name="portfolio_id" onchange="this.form.submit()">
-          {% for p in nav_portfolios %}<option value="{{ p.id }}" {% if p.id == current_portfolio_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
-        </select>
-        <noscript><button>OK</button></noscript>
-      </form>
-      <a href="/account" {% if path == "/account" %}aria-current="page"{% endif %}>{{ user.username }}</a>
-      <form method="post" action="/logout"><button class="link">{{ t.logout }}</button></form>
-    </div>
-  </div>
+  {% if nav_portfolios | length > 1 %}
+  <form method="post" action="/portfolios/select" class="portfolio-switch">
+    <label class="visually-hidden" for="portfolio-select">{{ t.nav_portfolio }}</label>
+    <select id="portfolio-select" name="portfolio_id" onchange="this.form.submit()">
+      {% for p in nav_portfolios %}<option value="{{ p.id }}" {% if p.id == current_portfolio_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select>
+    <noscript><button>OK</button></noscript>
+  </form>
   {% endif %}
-</header>
-<main>
-{% block content %}{% endblock %}
-</main>
-<footer>{{ t.disclaimer }}</footer>
+  <nav aria-label="{{ t.nav_menu }}">
+    <div class="nav-group nav-group-main">
+      <div class="nav-title">{{ t.nav_group_portfolio }}</div>
+      {{ nav_link("/", t.nav_dashboard, "home") }}
+      {{ nav_link("/signals", t.nav_signals, "signal") }}
+      {{ nav_link("/dividends", t.nav_dividends, "calendar") }}
+    </div>
+    <div class="nav-group">
+      <div class="nav-title">{{ t.nav_group_explore }}</div>
+      {{ nav_link("/screener", t.nav_screener, "search") }}
+      {{ nav_link("/ask", t.nav_ask, "chat", "in-tabbar") }}
+      {{ nav_link("/backtest", t.nav_backtest, "history") }}
+    </div>
+    <div class="nav-group">
+      <div class="nav-title">{{ t.nav_group_manage }}</div>
+      {{ nav_link("/import", t.nav_import, "upload") }}
+      {{ nav_link("/settings", t.nav_settings, "sliders") }}
+      {{ nav_link("/account", t.nav_account, "user") }}
+    </div>
+  </nav>
+  <div class="sidebar-foot">
+    <span class="muted small">{{ user.username }}</span>
+    <form method="post" action="/logout"><button class="link">{{ t.logout }}</button></form>
+  </div>
+</aside>
+<nav class="tabbar" aria-label="{{ t.nav_menu }}">
+  {{ nav_link("/", t.nav_dashboard, "home") }}
+  {{ nav_link("/signals", t.nav_signals, "signal") }}
+  {{ nav_link("/dividends", t.nav_dividends, "calendar") }}
+  {{ nav_link("/ask", t.nav_ask_short, "chat") }}
+  <button type="button" class="menu-toggle{% if active not in ["/", "/signals", "/dividends", "/ask"] %} is-current{% endif %}" aria-expanded="false" aria-controls="site-menu">{{ ui.icon("more") }}<span>{{ t.nav_more }}</span></button>
+</nav>
+{% endif %}
+<div class="content">
+  {% if not user %}<header class="public-head"><span class="brand">{{ t.app_name }}</span></header>{% endif %}
+  <main>
+  {% block content %}{% endblock %}
+  </main>
+  <footer>{{ t.disclaimer }}</footer>
+</div>
 <script src="/static/app.js"></script>
 <script src="/static/charts.js"></script>
 </body>

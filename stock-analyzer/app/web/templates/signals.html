@@ -3,8 +3,8 @@
 {% block title %}{{ t.signals_title }} · {{ t.app_name }}{% endblock %}
 {% block content %}
 <h1>{{ t.signals_title }}</h1>
-<p class="lead">{{ t.signals_intro }}
-  <span class="muted">{{ t.signals_thresholds.format(sell=analysis.sell_below, buy=analysis.buy_from, maxpos=analysis.max_position_pct) }}</span></p>
+<p class="lead muted">{{ t.signals_thresholds.format(sell=analysis.sell_below, buy=analysis.buy_from, maxpos=analysis.max_position_pct) }}</p>
+{{ m.explain(t.signals_intro) }}
 {% if not signals %}
 <section class="card empty"><p>{{ t.signals_empty }}</p><a class="button primary" href="/import">{{ t.dash_go_import }}</a></section>
 {% else %}

@@ -11,16 +11,19 @@ The app is read on a desktop and on a phone, often to check one number quickly. 
 
 - **No build step.** Jinja templates in `app/web/templates/`, one stylesheet in `app/web/static/style.css`, plain JavaScript in `app/web/static/`. Don't add a framework, a CDN or web fonts, because the app must run offline on a Raspberry Pi.
 - **All text comes from `app/i18n/nl.py`.** Write it in plain Dutch and don't put text in templates or JavaScript.
-- **`app.js` handles shared behaviour:** the menu and the phone view of tables. Pages must still be usable without JavaScript, even if less tidy.
+- **`app.js` handles shared behaviour:** the "Meer" sheet, tabs and the phone view of tables. Pages must still be usable without JavaScript, even if less tidy.
 - **Use the design tokens.** Colours, spacing and radii are CSS variables at the top of `style.css`, in light and dark. Don't write a raw colour or a one-off size in a rule, because dark mode and consistency both depend on it.
 
 ## Layout rules
 
-- **Design for 360 px first,** then let the layout grow. Prefer layouts that adapt by themselves (`auto-fit`, `minmax(min(…, 100%), 1fr)`, `clamp()`) over extra breakpoints. The breakpoints are the phone one at 720 px and the menu one at 1240 px, plus one at 600 px for the chart legend.
+- **Navigation:** a grouped sidebar from 1024 px, and a bottom tab bar with a "Meer" sheet below that. Only the most used pages get a tab. A new page goes in the sidebar first.
+- **One thing leads.** A page opens with one main number or chart. Use the `summary` block for that, with one large value and a quiet row of secondary values, instead of a row of equal boxes.
+- **Show less, offer more.** Explanations, method notes and secondary tables go in a `disclosure`. Long pages with separate subjects use `data-tabs`. The rule of thumb is at most five columns in a table and one reason per row, with the rest on the detail page. Warnings that change a decision stay visible, such as the intraday warning.
+- **Design for 360 px first,** then let the layout grow. Prefer layouts that adapt by themselves (`auto-fit`, `minmax(min(…, 100%), 1fr)`, `clamp()`) over extra breakpoints. The breakpoints are 720 px for phone tables and forms, 1024 px for navigation and 1280 px for the two-column overview.
 - **The page never scrolls sideways.** Long text wraps, and only a table with many number columns may scroll inside its own box.
 - **One main action per section.** Secondary actions look quieter. On a phone, buttons and form fields take the full width.
 - **Touch targets are at least 44 px high on a phone,** and inputs use 16 px text there, otherwise iOS zooms in when a field gets focus.
-- **Keep hierarchy simple:** one `h1` per page, an `h2` per card, and muted text for anything secondary. Don't add a card inside a card or a border where spacing already separates things.
+- **Keep hierarchy simple:** one `h1` per page, an `h2` per card, and muted text for anything secondary. Links in tables look like text until you hover them. Colour is for meaning, such as gain, loss or the current page, not decoration. Don't add a card inside a card or a border where spacing already separates things.
 
 ## Tables
 

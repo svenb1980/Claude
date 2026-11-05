@@ -2,17 +2,13 @@
 {% import "_macros.html" as m with context %}
 {% block title %}{{ position.name }} · {{ t.app_name }}{% endblock %}
 {% block content %}
-<p><a href="/signals">← {{ t.stock_back }}</a></p>
+<a class="back" href="/signals">← {{ t.stock_back }}</a>
 <div class="page-head">
   <div>
     <h1>{{ position.name }}</h1>
-    <p class="muted">{{ position.ticker or t.none }} · {{ position.isin }}{% if position.sector %} · {{ position.sector }}{% endif %}</p>
+    <p class="muted small">{{ position.ticker or t.none }} · {{ position.isin }}{% if position.sector %} · {{ position.sector }}{% endif %}</p>
   </div>
-  <div class="headline-signal">
-    {{ m.signal_badge(result.label) }}
-    <div class="muted small">{{ t.col_score }} {{ result.total | number(0) }} · {{ t.col_confidence }} {{ result.confidence | pct(0) }}</div>
-    <a class="button" href="/ask?scope={{ position.isin }}">{{ t.ask_about_stock }}</a>
-  </div>
+  <a class="button" href="/ask?scope={{ position.isin }}">{{ t.ask_about_stock }}</a>
 </div>
 
 {% for note in result.notes %}<p class="notice">{{ note }}</p>{% endfor %}
@@ -26,19 +22,28 @@
 </section>
 {% endif %}
 
-<section class="tiles">
-  <div class="tile"><span class="tile-label">{{ t.col_value }}</span><strong>{{ position.value_eur | eur }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.col_qty }}</span><strong>{{ position.quantity | quantity }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.col_cost }}</span><strong>{{ position.cost_eur | eur }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.col_result }}</span><strong>{{ position.unrealised_eur | signed_eur }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.col_weight }}</span><strong>{{ position.weight_pct | pct }}</strong></div>
+<section class="summary">
+  <div class="summary-main">
+    <div class="summary-label">{{ t.col_value }}</div>
+    <div class="summary-value">{{ position.value_eur | eur }}</div>
+    <div class="summary-change {{ m.signed_class(position.unrealised_eur) }}">{{ position.unrealised_eur | signed_eur }}{% if position.unrealised_pct is not none %} ({{ position.unrealised_pct | pct }}){% endif %}</div>
+  </div>
+  <dl class="summary-stats">
+    <div><dt>{{ t.col_signal }}</dt><dd>{{ m.signal_badge(result.label) }}</dd></div>
+    {{ m.stat(t.col_score, result.total | number(0)) }}
+    {{ m.stat(t.col_confidence, result.confidence | pct(0)) }}
+    {{ m.stat(t.col_qty, position.quantity | quantity) }}
+    {{ m.stat(t.col_cost, position.cost_eur | eur) }}
+    {{ m.stat(t.col_weight, position.weight_pct | pct) }}
+  </dl>
 </section>
 
-{% include "_chart.html" %}
+<div data-tabs>
+  {% include "_chart.html" %}
 
-<div class="columns">
-  <section class="card">
+  <section class="card" data-tab="{{ t.tab_score }}">
     <h2>{{ t.stock_breakdown }}</h2>
+    <div class="factor-grid">
     {% for factor in result.factors %}
     <div class="factor">
       <div class="hbar-row">
@@ -57,8 +62,10 @@
       </ul>
     </div>
     {% endfor %}
+    </div>
   </section>
-  <div>
+
+  <div class="columns" data-tab="{{ t.tab_figures }}">
     <section class="card">
       <h2>{{ t.stock_metrics }}</h2>
       <dl class="metrics">

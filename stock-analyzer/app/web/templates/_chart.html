@@ -1,37 +1,49 @@
-{# The price chart with sell lines and evidence, shared by holdings and buy candidates. #}
-<section class="card">
+{# The price chart with sell lines and evidence, shared by holdings and buy candidates. Each part is a tab. #}
+<section class="card" data-tab="{{ t.tab_price }}">
   <h2>{{ t.lvl_title }}</h2>
   {% if chart %}
-  <p class="muted small">{{ t.lvl_intro }}</p>
   <div class="line-chart" data-chart='{{ chart | tojson }}'></div>
   {% if level_rows %}
   <div class="table-wrap">
   <table class="level-table">
-    <thead><tr><th>{{ t.lvl_col_level }}</th><th class="num">{{ t.lvl_col_price }}</th><th class="num">{{ t.lvl_col_distance }}</th><th>{{ t.lvl_col_evidence }}</th></tr></thead>
+    <thead><tr><th>{{ t.lvl_col_level }}</th><th class="num">{{ t.lvl_col_price }}</th><th class="num">{{ t.lvl_col_distance }}</th></tr></thead>
     <tbody>
     {% for row in level_rows %}
       <tr>
-        <td><strong>{{ row.label }}</strong><div class="muted small">{{ row.explain }}</div></td>
+        <td>
+          <details class="row-more">
+            <summary>{{ row.label }}</summary>
+            <p class="muted small">{{ row.explain }}</p>
+            <p class="small">{{ row.evidence }}</p>
+          </details>
+        </td>
         <td class="num">{{ row.price | number }}</td>
         <td class="num">{{ row.distance }}</td>
-        <td class="small">{{ row.evidence }}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  <p class="muted small">{{ t.lvl_atr.format(atr=level_info.atr_pct | pct, date=level_info.as_of | nldate) }}</p>
   {% else %}<p class="muted">{{ t.lvl_no_levels }}</p>{% endif %}
-  <details class="table-view">
+  <details class="disclosure">
+    <summary>{{ t.help_how_to_read }}</summary>
+    <div class="disclosure-body">
+      <p>{{ t.lvl_intro }}</p>
+      {% if level_rows %}<p>{{ t.lvl_atr.format(atr=level_info.atr_pct | pct, date=level_info.as_of | nldate) }}</p>{% endif %}
+    </div>
+  </details>
+  <details class="disclosure">
     <summary>{{ t.stock_chart_table }}</summary>
-    <table><thead><tr><th>{{ t.col_date }}</th><th class="num">{{ t.col_price }}</th></tr></thead>
-      <tbody>{% for row in table %}<tr><td>{{ row.date | nldate }}</td><td class="num">{{ row.close | number }}</td></tr>{% endfor %}</tbody></table>
+    <div class="disclosure-body">
+      <table><thead><tr><th>{{ t.col_date }}</th><th class="num">{{ t.col_price }}</th></tr></thead>
+        <tbody>{% for row in table %}<tr><td>{{ row.date | nldate }}</td><td class="num">{{ row.close | number }}</td></tr>{% endfor %}</tbody></table>
+    </div>
   </details>
   {% else %}<p class="muted">{{ t.stock_no_prices }}</p>{% endif %}
 </section>
 
 {% if chart_ticker and chart %}
-<section class="card intraday" data-intraday="{{ chart_ticker }}" data-loading="{{ t.intra_loading }}" data-failed="{{ t.intra_failed }}"
+<section class="card intraday" data-tab="{{ t.tab_intraday }}" data-intraday="{{ chart_ticker }}" data-loading="{{ t.intra_loading }}" data-failed="{{ t.intra_failed }}"
          data-col-level="{{ t.lvl_col_level }}" data-col-price="{{ t.lvl_col_price }}" data-col-distance="{{ t.lvl_col_distance }}" data-col-evidence="{{ t.lvl_col_evidence }}">
   <h2>{{ t.intra_title }}</h2>
   <p class="notice">{{ t.intra_warning }}</p>

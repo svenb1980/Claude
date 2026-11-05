@@ -5,7 +5,7 @@
 <div class="page-head">
   <h1>{{ t.dash_title }}</h1>
   <form method="post" action="/refresh" class="refresh">
-    <span class="muted">
+    <span class="muted small">
       {% if status.get("running") %}{{ t.dash_refreshing }}
       {% elif status.get("finished") %}{{ t.dash_last_refresh.format(when=status.finished | nldatetime) }}
         {% if status.get("failed") %}{{ t.dash_refresh_failed.format(failed=status.failed, total=status.total) }}{% endif %}
@@ -22,79 +22,127 @@
   <a class="button primary" href="/import">{{ t.dash_go_import }}</a>
 </section>
 {% else %}
-<section class="tiles">
-  <div class="tile tile-hero"><span class="tile-label">{{ t.dash_value }}</span><strong>{{ portfolio.value_eur | eur }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.dash_unrealised }}</span><strong>{{ portfolio.unrealised_eur | signed_eur }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.dash_realised }}</span><strong>{{ portfolio.realised_eur | signed_eur }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.dash_dividends }}</span><strong>{{ portfolio.dividends_eur | eur }}</strong></div>
-  <div class="tile"><span class="tile-label">{{ t.dash_fees }}</span><strong>{{ portfolio.fees_eur | eur }}</strong></div>
+<section class="summary">
+  <div class="summary-main">
+    <div class="summary-label">{{ t.dash_value }}</div>
+    <div class="summary-value">{{ portfolio.value_eur | eur }}</div>
+    <div class="summary-change {{ m.signed_class(portfolio.unrealised_eur) }}">
+      {{ portfolio.unrealised_eur | signed_eur }}{% if portfolio.cost_eur %} ({{ (portfolio.unrealised_eur / portfolio.cost_eur * 100) | pct }}){% endif %}
+      <span class="muted">{{ t.dash_unrealised_short }}</span>
+    </div>
+  </div>
+  <dl class="summary-stats">
+    {{ m.stat(t.dash_realised, portfolio.realised_eur | signed_eur) }}
+    {{ m.stat(t.dash_dividends, portfolio.dividends_eur | eur) }}
+    {{ m.stat(t.dash_fees, portfolio.fees_eur | eur) }}
+  </dl>
 </section>
 {% if portfolio.unpriced %}<p class="notice">{{ t.dash_unpriced.format(n=portfolio.unpriced) }}</p>{% endif %}
 
-<section class="card">
-  <h2>{{ t.cmp_title }}</h2>
-  {% if comparison.markets_missing %}<p class="notice">{{ t.cmp_markets_missing }}</p>{% endif %}
-  {% if comparison.available %}
-  <div class="market-compare" data-failed="{{ t.cmp_failed }}" data-subject-label="{{ t.cmp_subject }}" data-loading="{{ t.intra_loading }}"></div>
-  <div class="table-wrap">
-  <table class="compare-table matrix">
-    <thead><tr><th>{{ t.cmp_col_line }}</th>{% for name in periods %}<th class="num">{{ t["period_" ~ name] }}</th>{% endfor %}</tr></thead>
-    <tbody>
-    {% for row in comparison.table %}
-      <tr{% if row.key == "portfolio" %} class="row-strong"{% endif %}>
-        <td>{{ t["market_" ~ row.key] }}</td>
-        {% for name in periods %}
-        <td class="num {{ m.signed_class(row.returns[name]) }}">{{ row.returns[name] | signed_ratio_pct }}</td>
-        {% endfor %}
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  <p class="muted small">{{ t.cmp_notes }} {{ t.cmp_as_of.format(date=comparison.as_of | nldate) }}</p>
-  {% if comparison.excluded %}<p class="muted small">{{ t.cmp_excluded.format(names=comparison.excluded | join(", ")) }}</p>{% endif %}
-  {% if comparison.flagged %}<p class="muted small">{{ t.cmp_flagged.format(n=comparison.flagged) }}</p>{% endif %}
+<div class="split">
+  <section class="card">
+    <h2>{{ t.cmp_title }}</h2>
+    {% if comparison.markets_missing %}<p class="notice">{{ t.cmp_markets_missing }}</p>{% endif %}
+    {% if comparison.available %}
+    <div class="market-compare" data-failed="{{ t.cmp_failed }}" data-subject-label="{{ t.cmp_subject }}" data-loading="{{ t.intra_loading }}"></div>
+    {% if comparison.excluded %}<p class="muted small">{{ t.cmp_excluded.format(names=comparison.excluded | join(", ")) }}</p>{% endif %}
 
-  {% if comparison.stocks and market_keys %}
-  <h3>{{ t.cmp_stocks_title }}</h3>
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>{{ t.col_product }}</th><th class="num">{{ t.cmp_col_year }}</th>{% for key in market_keys %}<th class="num">{{ t.cmp_col_versus.format(market=t["market_" ~ key]) }}</th>{% endfor %}</tr></thead>
-    <tbody>
-    {% for stock in comparison.stocks %}
-      <tr>
-        <td><a href="/stocks/{{ stock.isin }}">{{ stock.name }}</a></td>
-        <td class="num {{ m.signed_class(stock.year_return) }}">{{ stock.year_return | signed_ratio_pct }}</td>
-        {% for key in market_keys %}
-        <td class="num {{ m.signed_class(stock.versus[key]) }}">{{ stock.versus[key] | signed_points }}</td>
+    <details class="disclosure">
+      <summary>{{ t.cmp_all_periods }}</summary>
+      <div class="disclosure-body">
+        <div class="table-wrap">
+        <table class="compare-table matrix">
+          <thead><tr><th>{{ t.cmp_col_line }}</th>{% for name in periods %}<th class="num">{{ t["period_" ~ name] }}</th>{% endfor %}</tr></thead>
+          <tbody>
+          {% for row in comparison.table %}
+            <tr{% if row.key == "portfolio" %} class="row-strong"{% endif %}>
+              <td>{{ t["market_" ~ row.key] }}</td>
+              {% for name in periods %}
+              <td class="num {{ m.signed_class(row.returns[name]) }}">{{ row.returns[name] | signed_ratio_pct }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    {% if comparison.stocks and market_keys %}
+    <details class="disclosure">
+      <summary>{{ t.cmp_stocks_title }}</summary>
+      <div class="disclosure-body">
+        <div class="table-wrap">
+        <table>
+          <thead><tr><th>{{ t.col_product }}</th><th class="num">{{ t.cmp_col_year }}</th>{% for key in market_keys %}<th class="num">{{ t.cmp_col_versus.format(market=t["market_" ~ key]) }}</th>{% endfor %}</tr></thead>
+          <tbody>
+          {% for stock in comparison.stocks %}
+            <tr>
+              <td><a href="/stocks/{{ stock.isin }}">{{ stock.name }}</a></td>
+              <td class="num {{ m.signed_class(stock.year_return) }}">{{ stock.year_return | signed_ratio_pct }}</td>
+              {% for key in market_keys %}
+              <td class="num {{ m.signed_class(stock.versus[key]) }}">{{ stock.versus[key] | signed_points }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </details>
+    {% endif %}
+
+    <details class="disclosure">
+      <summary>{{ t.help_how_to_read }}</summary>
+      <div class="disclosure-body">
+        <p>{{ t.cmp_notes }} {{ t.cmp_as_of.format(date=comparison.as_of | nldate) }}</p>
+        {% if comparison.flagged %}<p>{{ t.cmp_flagged.format(n=comparison.flagged) }}</p>{% endif %}
+      </div>
+    </details>
+    {% else %}<p class="muted">{{ t.cmp_no_data }}</p>{% endif %}
+  </section>
+
+  <div class="split-side">
+    <section class="card">
+      <h2>{{ t.dash_allocation_sector }}</h2>
+      {% for name, share in allocation %}
+      <div class="hbar-row">
+        <span class="hbar-label" title="{{ name }}">{{ name }}</span>
+        <span class="hbar-track"><span class="hbar-fill" style="width: {{ '%.2f' | format(share) }}%"></span></span>
+        <span class="hbar-value">{{ share | pct }}</span>
+      </div>
+      {% endfor %}
+    </section>
+    <section class="card">
+      <h2>{{ t.dash_next_dividends }}</h2>
+      {% if upcoming %}
+      <ul class="rows">
+        {% for item in upcoming %}
+        <li>
+          <div class="rows-main"><span class="rows-title">{{ item.name }}</span><span class="muted small">{{ item.pay_date | nldate }}</span></div>
+          <div class="rows-side"><strong>{{ item.gross_eur | eur }}</strong><span class="small">{{ m.dividend_status(item) }}</span></div>
+        </li>
         {% endfor %}
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+      </ul>
+      {% else %}<p class="muted">{{ t.dash_no_next_dividends }}</p>{% endif %}
+    </section>
   </div>
-  {% endif %}
-  {% else %}<p class="muted">{{ t.cmp_no_data }}</p>{% endif %}
-</section>
+</div>
 
 <section class="card">
   <h2>{{ t.dash_positions }}</h2>
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>{{ t.col_product }}</th><th class="num phone-hide">{{ t.col_qty }}</th><th class="num">{{ t.col_value }}</th>
-      <th class="num phone-hide">{{ t.col_cost }}</th><th class="num">{{ t.col_result }}</th><th class="num">{{ t.col_result_pct }}</th>
+      <th>{{ t.col_product }}</th><th class="num">{{ t.col_value }}</th><th class="num">{{ t.col_result }}</th>
       <th class="num">{{ t.col_weight }}</th><th>{{ t.col_signal }}</th>
     </tr></thead>
     <tbody>
     {% for p in portfolio.positions %}
       <tr>
         <td><a href="/stocks/{{ p.isin }}">{{ p.name }}</a><div class="muted small">{{ p.ticker or p.isin }}</div></td>
-        <td class="num phone-hide">{{ p.quantity | quantity }}</td>
         <td class="num">{{ p.value_eur | eur }}</td>
-        <td class="num phone-hide">{{ p.cost_eur | eur }}</td>
-        <td class="num {{ m.signed_class(p.unrealised_eur) }}">{{ p.unrealised_eur | signed_eur }}</td>
-        <td class="num {{ m.signed_class(p.unrealised_pct) }}">{{ p.unrealised_pct | pct }}</td>
+        <td class="num {{ m.signed_class(p.unrealised_eur) }}">{{ p.unrealised_eur | signed_eur }}<div class="small">{{ p.unrealised_pct | pct }}</div></td>
         <td class="num">{{ p.weight_pct | pct }}</td>
         <td>{{ m.signal_badge(signals[p.isin].result.label) }}</td>
       </tr>
@@ -104,37 +152,11 @@
   </div>
 </section>
 
-<div class="columns">
-  <section class="card">
-    <h2>{{ t.dash_allocation_sector }}</h2>
-    {% for name, share in allocation %}
-    <div class="hbar-row">
-      <span class="hbar-label">{{ name }}</span>
-      <span class="hbar-track"><span class="hbar-fill" style="width: {{ '%.2f' | format(share) }}%"></span></span>
-      <span class="hbar-value">{{ share | pct }}</span>
-    </div>
-    {% endfor %}
-  </section>
-  <section class="card">
-    <h2>{{ t.dash_next_dividends }}</h2>
-    {% if upcoming %}
-    <table>
-      <thead><tr><th>{{ t.col_pay_date }}</th><th>{{ t.col_product }}</th><th class="num">{{ t.col_gross }}</th><th>{{ t.col_status }}</th></tr></thead>
-      <tbody>
-      {% for item in upcoming %}
-        <tr><td>{{ item.pay_date | nldate }}</td><td>{{ item.name }}</td><td class="num">{{ item.gross_eur | eur }}</td><td>{{ m.dividend_status(item) }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% else %}<p class="muted">{{ t.dash_no_next_dividends }}</p>{% endif %}
-  </section>
-</div>
-
 {% if portfolio.warnings %}
-<section class="card">
-  <h2>{{ t.dash_warnings }}</h2>
-  <ul>{% for warning in portfolio.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
-</section>
+<details class="disclosure">
+  <summary>{{ t.dash_warnings }}</summary>
+  <div class="disclosure-body"><ul>{% for warning in portfolio.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>
+</details>
 {% endif %}
 {% endif %}
 {% endblock %}

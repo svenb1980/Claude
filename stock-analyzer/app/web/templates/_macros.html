@@ -1,8 +1,21 @@
+{% macro icon(name) %}<svg class="icon" aria-hidden="true"><use href="#i-{{ name }}"></use></svg>{% endmacro %}
+
+{% macro explain(text, label=none) %}
+<details class="disclosure">
+  <summary>{{ label or t.help_explain }}</summary>
+  <div class="disclosure-body">{{ text }}</div>
+</details>
+{% endmacro %}
+
 {% macro signal_badge(label) %}
 <span class="badge badge-{{ label }}"><span class="badge-icon" aria-hidden="true">{% if label == "sell" %}▼{% elif label == "buy" %}▲{% elif label == "hold" %}■{% else %}?{% endif %}</span>{{ t["signal_" ~ label] }}</span>
 {% endmacro %}
 
 {% macro signed_class(value) %}{% if value is none %}{% elif value > 0 %}pos{% elif value < 0 %}neg{% endif %}{% endmacro %}
+
+{% macro stat(label, value, cls="") %}
+<div><dt>{{ label }}</dt><dd class="{{ cls }}">{{ value }}</dd></div>
+{% endmacro %}
 
 {% macro dividend_status(item) %}
 {% if item.status == "confirmed" %}<span class="tag tag-confirmed">✓ {{ t.div_status_confirmed }}</span>
