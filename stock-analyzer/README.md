@@ -170,8 +170,24 @@ but no amounts or personal details. Passwords are stored as scrypt hashes.
 
 ## Move to a Raspberry Pi
 
-Needs a Pi 4 or 5 with 64-bit Raspberry Pi OS and Docker installed. The arm64 build has not been run
-on real hardware yet.
+Needs a Pi 4 or 5 with Docker installed. Tested on a Pi 4 with 4 GB running 32-bit Raspberry Pi OS 11
+(Bullseye) and Docker 20.10: the image builds there in a few minutes and all tests pass. The 64-bit
+(arm64) build has not been run on real hardware yet.
+
+**32-bit Raspberry Pi OS (armv7).** PyPI has no ready-made builds of numpy, pandas and the other compiled
+packages for armv7, and compiling them on a Pi takes hours. The Dockerfile therefore uses Python 3.11 and
+[piwheels.org](https://www.piwheels.org) there, with the slightly older versions in
+`requirements-armv7.txt`. Add this to `.env` on such a Pi:
+
+```ini
+PYTHON_VERSION=3.11
+```
+
+Vraag Claude can't use your subscription on the Pi, because Claude Code doesn't run on 32-bit ARM and the
+image doesn't include it. Use `ASK_BACKEND=api` there, or ask from a PC.
+
+**Pick a free port.** Check what's in use with `sudo ss -tlnp` and `docker ps -a`, and set `PORT` in
+`.env`. Portainer's agent conventionally uses 8000, so 8010 is a safer choice next to Portainer.
 
 **1. Back up the volume on the current machine:**
 

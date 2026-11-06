@@ -1,6 +1,10 @@
 services:
   stock-analyzer:
-    build: .
+    build:
+      context: .
+      args:
+        # 3.11 on 32-bit Raspberry Pi OS, see the Dockerfile.
+        PYTHON_VERSION: "${PYTHON_VERSION:-3.12}"
     image: stock-analyzer:latest
     container_name: stock-analyzer
     restart: unless-stopped
