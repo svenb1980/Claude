@@ -65,6 +65,27 @@
 
   document.querySelectorAll("[data-tabs]").forEach(setUpTabs);
 
+  // A page that shows older results, or a refresh in progress, reloads once the server is done.
+  const watched = (document.body.dataset.watch || "").split(" ").filter(Boolean);
+  if (watched.length) {
+    const key = "reloads:" + location.pathname;
+    let recent = [];
+    try { recent = JSON.parse(sessionStorage.getItem(key) || "[]").filter((t) => Date.now() - t < 60000); } catch (e) { recent = []; }
+    const check = async () => {
+      try {
+        const status = await (await fetch("/api/status", { headers: { Accept: "application/json" } })).json();
+        if (watched.every((name) => !status[name])) {
+          if (recent.length >= 3) return; // Never loop: at most three reloads a minute.
+          try { sessionStorage.setItem(key, JSON.stringify([...recent, Date.now()])); } catch (e) { /* private mode */ }
+          location.reload();
+          return;
+        }
+      } catch (e) { /* offline or restarting: try again */ }
+      setTimeout(check, 3000);
+    };
+    setTimeout(check, 2000);
+  }
+
   if (window.matchMedia("(max-width: 720px)").matches) {
     document.querySelectorAll("[data-closed-on-phone]").forEach((panel) => { panel.open = false; });
   }

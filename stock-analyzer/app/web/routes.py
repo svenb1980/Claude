@@ -27,11 +27,13 @@ from sqlalchemy import func, select
 
 from app import auth
 from app.analysis.backtest import run_backtest
-from app.analysis.comparison import MARKETS, PERIODS, build_comparison, chart_payload
+from app.analysis import warm
+from app.analysis.cache import WAIT_FOR_FRESH, ResultCache, any_busy, time_left
+from app.analysis.comparison import MARKETS, PERIODS, cached_comparison, chart_payload
 from app.analysis.levels import break_even_move_pct, daily_levels, intraday_levels, split_sessions
 from app.analysis.scoring import FACTORS
-from app.analysis.screener import PRESETS, SCREEN_FACTORS, portfolio_profile, run_screen, score_stock, _label
-from app.analysis.service import compute_signals, load_prices
+from app.analysis.screener import PRESETS, SCREEN_FACTORS, profile_for, score_stock, screen_for, _label
+from app.analysis.service import cached_prices, cached_signals, compute_signals, factory_for, load_prices
 from app.ask import service as ask
 from app.db import session_scope
 from app.dividends.calendar import expected_dividends, month_view, received_dividends, year_totals
@@ -44,7 +46,9 @@ from app.market.symbols import set_manual_ticker
 from app.migrations import has_legacy_data
 from app.models import Portfolio, Price, Product, ScreenerStock, Transaction, User
 from app.portfolio.positions import average_fee_eur, import_status
-from app.settings_store import bump_data_version, get_analysis_settings, get_setting, set_analysis_settings, set_setting
+from app.settings_store import (
+    bump_data_version, get_analysis_settings, get_setting, market_version, set_analysis_settings, set_setting,
+)
 from app.web.formatting import FILTERS, number
 from app.web.levels_view import chart_lines, daily_rows, intraday_notes, intraday_rows
 
@@ -66,6 +70,7 @@ DEFAULT_TRADE_VALUE_EUR = 1000.0
 _backtest_lock = threading.Lock()
 _backtest_running: dict = {"portfolio_id": None}
 _intraday_cache: dict[str, tuple[float, pd.DataFrame]] = {}
+_charts = ResultCache("charts", max_entries=64)
 _intraday_lock = threading.Lock()
 
 
@@ -105,6 +110,8 @@ def _render(request: Request, name: str, **context) -> HTMLResponse:
         with session_scope(_factory(request)) as session:
             current_id = _current_portfolio(request, session).id
             nav_portfolios = _portfolios(session, user.id)
+    context.setdefault("updating", False)
+    context.setdefault("watch", [])
     return templates.TemplateResponse(
         request, name,
         {"user": user, "nav_portfolios": nav_portfolios, "current_portfolio_id": current_id,
@@ -131,6 +138,7 @@ def _start_refresh(request: Request) -> None:
             refresh_all(factory, get_provider())
         except Exception:
             log.exception("Market data refresh failed")
+        warm.warm_up(factory)
 
     threading.Thread(target=job, daemon=True, name="refresh").start()
 
@@ -138,6 +146,19 @@ def _start_refresh(request: Request) -> None:
 @router.get("/healthz")
 def healthz():
     return JSONResponse({"status": "ok"})
+
+
+@router.get("/api/status")
+def status_api(request: Request):
+    """What pages that show older results wait for before they reload."""
+    with session_scope(_factory(request)) as session:
+        refreshing = bool(refresh_status(session).get("running"))
+        screener = bool(screener_status(session).get("running"))
+    return JSONResponse({
+        "calculating": any_busy() or warm.is_running(),
+        "refreshing": refreshing,
+        "screener": screener,
+    })
 
 
 # --- First run, login, account ----------------------------------------------
@@ -337,10 +358,14 @@ def user_delete(request: Request, user_id: int, confirm_name: str = Form("")):
 def dashboard(request: Request):
     with session_scope(_factory(request)) as session:
         current = _current_portfolio(request, session)
-        portfolio, signals, analysis = compute_signals(session, current.id, _user(request).id)
+        # Both calculations start at once and share one short wait.
+        deadline = time.monotonic() + WAIT_FOR_FRESH
+        cached_comparison(session, current.id, wait=0)
+        (portfolio, signals, analysis), stale = cached_signals(session, current.id, _user(request).id,
+                                                                wait=time_left(deadline))
         status = refresh_status(session)
         upcoming = expected_dividends(session, current.id)[:6]
-        comparison = build_comparison(session, current.id)
+        comparison, stale_comparison = cached_comparison(session, current.id, wait=time_left(deadline))
     sectors: dict[str, float] = {}
     for position in portfolio.positions:
         if position.weight_pct is not None:
@@ -353,6 +378,8 @@ def dashboard(request: Request):
         portfolio=portfolio, signals=signal_by_isin, status=status,
         upcoming=upcoming, allocation=allocation, comparison=comparison,
         periods=[name for name, _ in PERIODS], market_keys=[key for key, _, _ in MARKETS if key in comparison.markets],
+        updating=stale or stale_comparison,
+        watch=["calculating", "refreshing"] if stale or stale_comparison or status.get("running") else [],
     )
 
 
@@ -360,7 +387,7 @@ def dashboard(request: Request):
 def market_comparison_api(request: Request):
     with session_scope(_factory(request)) as session:
         current = _current_portfolio(request, session)
-        comparison = build_comparison(session, current.id)
+        comparison, _ = cached_comparison(session, current.id)
     if not comparison.available:
         return JSONResponse({"error": T["cmp_no_data"]})
     return JSONResponse(_finite(chart_payload(comparison, T)))
@@ -381,9 +408,10 @@ LABEL_ORDER = {"sell": 0, "buy": 1, "hold": 2, "insufficient": 3}
 def signals_page(request: Request):
     with session_scope(_factory(request)) as session:
         current = _current_portfolio(request, session)
-        portfolio, signals, analysis = compute_signals(session, current.id, _user(request).id)
+        (portfolio, signals, analysis), stale = cached_signals(session, current.id, _user(request).id)
     ordered = sorted(signals, key=lambda s: (LABEL_ORDER[s.result.label], -(s.result.total or 0)))
-    return _render(request, "signals.html", signals=ordered, analysis=analysis, portfolio=portfolio)
+    return _render(request, "signals.html", signals=ordered, analysis=analysis, portfolio=portfolio,
+                   updating=stale, watch=["calculating"] if stale else [])
 
 
 def _price_chart(prices: pd.DataFrame, rows: list[dict]) -> dict:
@@ -410,7 +438,7 @@ def _chart_context(session, ticker: str | None) -> dict:
     """Everything the shared price chart with sell lines needs."""
     if not ticker:
         return {"chart": None, "level_rows": [], "level_info": None, "table": [], "chart_ticker": None}
-    prices = load_prices(session, ticker)
+    prices = cached_prices(session, ticker)
     if prices.empty:
         return {"chart": None, "level_rows": [], "level_info": None, "table": [], "chart_ticker": ticker}
     levels = daily_levels(prices)
@@ -425,20 +453,41 @@ def _chart_context(session, ticker: str | None) -> dict:
     }
 
 
+def chart_for(session, ticker: str | None, wait: float | None = WAIT_FOR_FRESH) -> dict:
+    """The chart context, kept until the prices change."""
+    if not ticker:
+        return _chart_context(session, ticker)
+    factory = factory_for(session)
+
+    def calculate():
+        own = factory()
+        try:
+            return _chart_context(own, ticker)
+        finally:
+            own.close()
+
+    value, _ = _charts.get(ticker, market_version(session), calculate, wait=wait)
+    return value
+
+
 @router.get("/stocks/{isin}", response_class=HTMLResponse)
 def stock_page(request: Request, isin: str):
     with session_scope(_factory(request)) as session:
         current = _current_portfolio(request, session)
-        portfolio, signals, analysis = compute_signals(session, current.id, _user(request).id)
+        deadline = time.monotonic() + WAIT_FOR_FRESH
+        ticker = session.scalar(select(Product.ticker).where(Product.isin == isin))
+        chart_for(session, ticker, wait=0)  # Starts the chart alongside the signals.
+        (portfolio, signals, analysis), stale = cached_signals(session, current.id, _user(request).id,
+                                                                wait=time_left(deadline))
         signal = next((s for s in signals if s.position.isin == isin), None)
         if signal is None:
             return _render(request, "error.html", message=T["signals_empty"])
-        chart = _chart_context(session, signal.position.ticker)
+        chart = chart_for(session, signal.position.ticker, wait=time_left(deadline))
         received = [r for r in received_dividends(session, current.id) if r.isin == isin]
     return _render(
         request, "stock.html",
         signal=signal, position=signal.position, result=signal.result, metrics=signal.metrics,
-        analysis=analysis, received=received, **chart,
+        analysis=analysis, received=received, updating=stale, watch=["calculating"] if stale else [], **chart,
     )
 
 
@@ -541,22 +590,13 @@ async def ask_question(request: Request):
 
 # --- Screener --------------------------------------------------------------
 
-def _profile(session, portfolio_id: int, user_id: int) -> dict:
-    portfolio, _, _ = compute_signals(session, portfolio_id, user_id)
-    held = {p.isin for p in portfolio.positions}
-    products = session.scalars(select(Product).where(Product.isin.in_(held))).all() if held else []
-    names = {p.fundamentals.get("name") for p in products if p.fundamentals.get("name")}
-    return portfolio_profile(portfolio.positions, names)
-
-
 @router.get("/screener", response_class=HTMLResponse)
 def screener_page(request: Request, preset: str = "balanced", sector: str = "", region: str = "",
                   min_yield: str = "", label: str = "", q: str = ""):
     preset = preset if preset in PRESETS else "balanced"
     with session_scope(_factory(request)) as session:
         current = _current_portfolio(request, session)
-        profile = _profile(session, current.id, _user(request).id)
-        results = run_screen(session, profile, preset)
+        (results, profile), stale = screen_for(session, current.id, _user(request).id, preset)
         counts = screener_counts(session)
         status = screener_status(session)
     sectors = sorted({r.sector for r in results if r.sector})
@@ -583,7 +623,8 @@ def screener_page(request: Request, preset: str = "balanced", sector: str = "", 
         presets=list(PRESETS), preset=preset, weights=PRESETS[preset], factors=SCREEN_FACTORS,
         sectors=sectors, regions=regions,
         selected={"sector": sector, "region": region, "min_yield": min_yield, "label": label, "q": q},
-        profile=profile,
+        profile=profile, updating=stale,
+        watch=["calculating", "screener"] if stale or status.get("running") else [],
     )
 
 
@@ -598,6 +639,7 @@ def screener_refresh(request: Request):
                 refresh_batch(factory, get_provider(), batch)
             except Exception:
                 log.exception("Screener refresh failed")
+            warm.warm_up(factory)
 
         threading.Thread(target=job, daemon=True, name="screener").start()
     return RedirectResponse("/screener", status_code=303)
@@ -611,10 +653,10 @@ def market_page(request: Request, ticker: str, preset: str = "balanced"):
         if stock is None:
             return _render(request, "error.html", message=T["scr_unknown"])
         current = _current_portfolio(request, session)
-        profile = _profile(session, current.id, _user(request).id)
+        profile = profile_for(session, current.id, _user(request).id)
         data = json.loads(stock.data_json or "{}")
         score, confidence, factors = score_stock(data, profile, PRESETS[preset]) if data else (None, 0.0, [])
-        chart = _chart_context(session, ticker)
+        chart = chart_for(session, ticker)
     return _render(
         request, "market.html", stock=stock, score=score, confidence=confidence, factors=factors,
         label=_label(score, confidence), metrics=data.get("metrics", {}), fundamentals=data.get("fundamentals", {}),
@@ -738,7 +780,7 @@ async def import_preview(request: Request, file: UploadFile = File(...)):
         if len(raw) > MAX_UPLOAD_BYTES:
             return _render(request, "import.html", preview=None, error=T["imp_too_large"], done=None, **context)
         try:
-            parsed = parse_export(raw)
+            parsed = await run_in_threadpool(parse_export, raw)
         except UnknownFormat as exc:
             return _render(request, "import.html", preview=None, error=str(exc), done=None, **context)
         check = check_duplicates(session, parsed, portfolio_id)
@@ -780,6 +822,7 @@ def import_confirm(request: Request, token: str = Form(...)):
         parsed = parse_export(path.read_bytes())
         added = save_export(session, parsed, current.id)
     path.unlink(missing_ok=True)
+    warm.warm_up(_factory(request))
     _start_refresh(request)
     return RedirectResponse(f"/import?done={added}", status_code=303)
 
@@ -856,6 +899,7 @@ async def settings_save(request: Request):
         else:
             context = _settings_context(request, session)
     if error is None:
+        warm.warm_up(_factory(request))
         return RedirectResponse("/settings?saved=1", status_code=303)
     return _render(request, "settings.html", saved=False, error=T["set_invalid"].format(error=error), **context)
 
@@ -870,6 +914,7 @@ def settings_ticker(request: Request, isin: str = Form(...), ticker: str = Form(
             )
             if has_it and session.get(Product, isin) is not None:
                 set_manual_ticker(session, isin, ticker)
+        warm.warm_up(_factory(request))
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 

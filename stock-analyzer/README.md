@@ -233,6 +233,18 @@ uvicorn app.main:app --reload
 
 All test data is made up. Never add a real export to the repository.
 
+**Keeping pages fast.** Once a result has been calculated once, a page waits at most about a second:
+
+- Signals, the market comparison, buy candidates and charts are kept in `app/analysis/cache.py`
+  until their data changes. One calculation per result runs at a time, in its own thread, and
+  repeated or simultaneous requests share it.
+- After a refresh, import or settings change, `app/analysis/warm.py` recalculates in the
+  background. A page that asks before that's done shows the previous figures with a notice, and
+  reloads itself when the new ones are ready.
+- The screener refresh raises its own version, so it doesn't clear the portfolio pages' results.
+- Refreshes download everything for a stock before writing, so the database isn't locked while
+  waiting for Yahoo.
+
 | Path | Purpose |
 |---|---|
 | `app/auth.py`, `app/migrations.py` | Accounts, database upgrades |

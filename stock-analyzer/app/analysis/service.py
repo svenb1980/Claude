@@ -2,20 +2,27 @@
 from __future__ import annotations
 
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.analysis.cache import WAIT_FOR_FRESH, ResultCache
 from app.analysis.metrics import compute_dividend_metrics, compute_price_metrics
 from app.analysis.scoring import ScoreResult, score_holding
-from app.models import DividendHistory, Price, Product
+from app.models import DividendHistory, Product
 from app.portfolio.positions import PortfolioSummary, Position, build_portfolio, normalise_currency
-from app.settings_store import data_version, get_analysis_settings
+from app.settings_store import data_version, get_analysis_settings, market_version
 
-_cache_lock = threading.Lock()
-_cache: dict = {"version": None, "values": {}}
+PRICE_COLUMNS = ["close", "adj_close", "volume", "high", "low"]
+PRICE_CACHE_SIZE = 96  # About 25 MB with 25 years of history each.
+
+_signals = ResultCache("signals")
+_price_lock = threading.Lock()
+_price_cache: OrderedDict[str, tuple[tuple, pd.DataFrame]] = OrderedDict()
 
 
 @dataclass
@@ -25,19 +32,52 @@ class Signal:
     metrics: dict
 
 
+def factory_for(session: Session) -> sessionmaker[Session]:
+    """Sessions on the same database, for calculations that run in their own thread."""
+    return sessionmaker(bind=session.get_bind(), expire_on_commit=False)
+
+
 def load_prices(session: Session, ticker: str) -> pd.DataFrame:
-    rows = session.execute(
-        select(Price.date, Price.close, Price.adj_close, Price.volume, Price.high, Price.low)
-        .where(Price.ticker == ticker)
-        .order_by(Price.date)
-    ).all()
-    columns = ["close", "adj_close", "volume", "high", "low"]
+    """Daily prices, read straight from the database.
+
+    Reads through the DB-API cursor, because building ORM rows and converting them one by
+    one took most of the time of a page.
+    """
+    cursor = session.connection().connection.dbapi_connection.cursor()
+    try:
+        cursor.execute(
+            "SELECT date, close, adj_close, volume, high, low FROM prices WHERE ticker = ? ORDER BY date", (ticker,),
+        )
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
     if not rows:
-        return pd.DataFrame(columns=columns, index=pd.DatetimeIndex([]), dtype=float)
-    frame = pd.DataFrame(rows, columns=["date", *columns])
-    frame["date"] = pd.to_datetime(frame["date"])
-    frame[columns] = frame[columns].apply(pd.to_numeric, errors="coerce")
-    return frame.set_index("date")
+        return pd.DataFrame(columns=PRICE_COLUMNS, index=pd.DatetimeIndex([], name="date"), dtype=float)
+    dates, *columns = zip(*rows)
+    index = pd.DatetimeIndex(pd.to_datetime(np.array(dates, dtype="datetime64[D]")), name="date")
+    return pd.DataFrame({name: np.array(values, dtype=float) for name, values in zip(PRICE_COLUMNS, columns)},
+                        index=index)
+
+
+def cached_prices(session: Session, ticker: str) -> pd.DataFrame:
+    """Like `load_prices`, but kept until stored prices can have changed.
+
+    For pages and their calculations only. The refresh jobs write prices before raising
+    the version, so they use `load_prices`. Callers must not change the returned frame.
+    """
+    version = market_version(session)
+    with _price_lock:
+        hit = _price_cache.get(ticker)
+        if hit is not None and hit[0] == version:
+            _price_cache.move_to_end(ticker)
+            return hit[1]
+    frame = load_prices(session, ticker)
+    with _price_lock:
+        _price_cache[ticker] = (version, frame)
+        _price_cache.move_to_end(ticker)
+        while len(_price_cache) > PRICE_CACHE_SIZE:
+            _price_cache.popitem(last=False)
+    return frame
 
 
 def load_dividends(session: Session, ticker: str) -> pd.Series:
@@ -54,7 +94,7 @@ def load_dividends(session: Session, ticker: str) -> pd.Series:
 def analyse_ticker(session: Session, ticker: str | None, benchmark: pd.Series | None, risk_free: float) -> dict:
     if not ticker:
         return {}
-    prices = load_prices(session, ticker)
+    prices = cached_prices(session, ticker)
     if prices.empty:
         return {}
     metrics = compute_price_metrics(prices["adj_close"], benchmark, risk_free)
@@ -80,18 +120,30 @@ def _shares(positions: list[Position]) -> tuple[dict, dict]:
 
 
 def compute_signals(session: Session, portfolio_id: int, user_id: int) -> tuple[PortfolioSummary, list[Signal], dict]:
-    version = data_version(session)
-    key = (portfolio_id, user_id)
-    with _cache_lock:
-        if _cache["version"] != version:
-            _cache["version"] = version
-            _cache["values"] = {}
-        if key in _cache["values"]:
-            return _cache["values"][key]
+    """Signals for the current data, waiting for them if needed."""
+    value, _ = _signals.get((portfolio_id, user_id), data_version(session),
+                            lambda: _calculate_signals(factory_for(session), portfolio_id, user_id))
+    return value
 
+
+def cached_signals(session: Session, portfolio_id: int, user_id: int, wait: float = WAIT_FOR_FRESH):
+    """For pages: ((portfolio, signals, analysis), stale). Stale means a newer result is being calculated."""
+    return _signals.get((portfolio_id, user_id), data_version(session),
+                        lambda: _calculate_signals(factory_for(session), portfolio_id, user_id), wait=wait)
+
+
+def _calculate_signals(factory, portfolio_id: int, user_id: int):
+    session = factory()
+    try:
+        return _signals_from(session, portfolio_id, user_id)
+    finally:
+        session.close()
+
+
+def _signals_from(session: Session, portfolio_id: int, user_id: int):
     analysis = get_analysis_settings(session, user_id)
     portfolio = build_portfolio(session, portfolio_id)
-    bench_prices = load_prices(session, analysis["benchmark"])
+    bench_prices = cached_prices(session, analysis["benchmark"])
     benchmark = bench_prices["adj_close"] if not bench_prices.empty else None
     products = {p.isin: p for p in session.scalars(select(Product)).all()}
     sectors, currencies = _shares(portfolio.positions)
@@ -111,17 +163,12 @@ def compute_signals(session: Session, portfolio_id: int, user_id: int) -> tuple[
         fundamentals = product.fundamentals if product else {}
         signals.append(Signal(position, score_holding(metrics, fundamentals, ctx, analysis, position.quote_type), metrics))
 
-    value = (portfolio, signals, analysis)
-    with _cache_lock:
-        if _cache["version"] == version:
-            _cache["values"][key] = value
-    return value
+    return portfolio, signals, analysis
 
 
 def clear_cache() -> None:
-    from app.analysis.comparison import clear_comparison_cache
+    from app.analysis.cache import clear_all
 
-    clear_comparison_cache()
-    with _cache_lock:
-        _cache["version"] = None
-        _cache["values"] = {}
+    clear_all()
+    with _price_lock:
+        _price_cache.clear()

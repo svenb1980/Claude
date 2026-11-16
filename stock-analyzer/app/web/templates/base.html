@@ -10,7 +10,7 @@
   <script>document.documentElement.classList.add("js")</script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
+<body{% if watch is defined and watch %} data-watch="{{ watch | join(' ') }}"{% endif %}>
 {% if user %}
 {% include "_icons.html" %}
 {# A stock page belongs to Signalen and a candidate's page to Koopkandidaten. #}
@@ -65,6 +65,7 @@
 <div class="content">
   {% if not user %}<header class="public-head"><span class="brand">{{ t.app_name }}</span></header>{% endif %}
   <main>
+  {% if updating is defined and updating %}<p class="notice notice-updating" role="status">{{ t.updating_notice }}</p>{% endif %}
   {% block content %}{% endblock %}
   </main>
   <footer>{{ t.disclaimer }}</footer>

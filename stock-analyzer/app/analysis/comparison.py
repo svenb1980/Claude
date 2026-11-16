@@ -6,7 +6,6 @@ dividends, because the indices used are price indices.
 """
 from __future__ import annotations
 
-import threading
 from dataclasses import dataclass, field
 from typing import Iterable
 
@@ -15,7 +14,8 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analysis.service import load_prices
+from app.analysis.cache import WAIT_FOR_FRESH, ResultCache
+from app.analysis.service import cached_prices, factory_for
 from app.models import FxRate, Product, Transaction
 from app.portfolio.positions import QTY_EPSILON, normalise_currency
 from app.settings_store import data_version
@@ -36,8 +36,7 @@ CORPORATE_ACTION_GAP = 0.5
 START_TOLERANCE_DAYS = 7
 DAILY_POINTS_YEARS = 2
 
-_cache_lock = threading.Lock()
-_cache: dict = {"version": None, "values": {}}
+_comparisons = ResultCache("comparison")
 
 
 @dataclass
@@ -141,7 +140,7 @@ def load_fx_series(session: Session, currency: str) -> pd.Series:
 
 def close_in_eur(session: Session, ticker: str, currency: str | None) -> pd.Series:
     """Daily close in EUR. Empty if the price or exchange rate isn't known."""
-    prices = load_prices(session, ticker)
+    prices = cached_prices(session, ticker)
     if prices.empty or not currency:
         return pd.Series(dtype=float, index=pd.DatetimeIndex([]))
     close = prices["close"].dropna()
@@ -187,14 +186,27 @@ def _open_isins(transactions: list) -> dict[str, float]:
 
 
 def build_comparison(session: Session, portfolio_id: int) -> MarketComparison:
-    version = data_version(session)
-    with _cache_lock:
-        if _cache["version"] != version:
-            _cache["version"] = version
-            _cache["values"] = {}
-        if portfolio_id in _cache["values"]:
-            return _cache["values"][portfolio_id]
+    """The comparison for the current data, waiting for it if needed."""
+    value, _ = _comparisons.get(portfolio_id, data_version(session),
+                                lambda: _calculate(factory_for(session), portfolio_id))
+    return value
 
+
+def cached_comparison(session: Session, portfolio_id: int, wait: float = WAIT_FOR_FRESH) -> tuple[MarketComparison, bool]:
+    """For pages: (comparison, stale). Stale means a newer one is being calculated."""
+    return _comparisons.get(portfolio_id, data_version(session),
+                            lambda: _calculate(factory_for(session), portfolio_id), wait=wait)
+
+
+def _calculate(factory, portfolio_id: int) -> MarketComparison:
+    session = factory()
+    try:
+        return _comparison_from(session, portfolio_id)
+    finally:
+        session.close()
+
+
+def _comparison_from(session: Session, portfolio_id: int) -> MarketComparison:
     transactions = session.scalars(select(Transaction).where(Transaction.portfolio_id == portfolio_id)).all()
     isins = {t.isin for t in transactions}
     products = {p.isin: p for p in session.scalars(select(Product)).all() if p.isin in isins}
@@ -238,7 +250,7 @@ def build_comparison(session: Session, portfolio_id: int) -> MarketComparison:
             stocks.append(StockComparison(isin, product.name or isin, product.ticker, closes[isin], year, versus))
         stocks.sort(key=lambda s: (s.year_return is None, -(s.year_return or 0.0)))
 
-    value = MarketComparison(
+    return MarketComparison(
         available=not portfolio.empty,
         portfolio=portfolio,
         markets=markets,
@@ -249,10 +261,6 @@ def build_comparison(session: Session, portfolio_id: int) -> MarketComparison:
         excluded=[products[i].name if i in products else i for i in result.excluded],
         markets_missing=len(markets) < len(MARKETS),
     )
-    with _cache_lock:
-        if _cache["version"] == version:
-            _cache["values"][portfolio_id] = value
-    return value
 
 
 def chart_payload(comparison: MarketComparison, labels: dict[str, str]) -> dict:
@@ -294,6 +302,4 @@ def chart_payload(comparison: MarketComparison, labels: dict[str, str]) -> dict:
 
 
 def clear_comparison_cache() -> None:
-    with _cache_lock:
-        _cache["version"] = None
-        _cache["values"] = {}
+    _comparisons.clear()

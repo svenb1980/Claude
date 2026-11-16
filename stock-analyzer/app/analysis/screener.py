@@ -1,7 +1,7 @@
 """Rank stocks outside the portfolio with transparent rules.
 
-Inputs are stored per stock by the screener refresh. Scoring happens when the page is
-viewed, because weights and portfolio fit differ per user and portfolio.
+Inputs are stored per stock by the screener refresh. Scoring depends on the weights and
+the portfolio, so it is done per user, portfolio and preset, and kept until the data changes.
 """
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.analysis.cache import WAIT_FOR_FRESH, ResultCache
 from app.analysis.scoring import FactorResult, _Builder, _dutch_decimals, score_momentum, score_risk, score_trend
 from app.i18n.nl import T
-from app.models import ScreenerStock
+from app.models import Product, ScreenerStock
+from app.settings_store import data_version, screener_version
 
 SCREEN_FACTORS = ("results", "dividend", "valuation", "liquidity", "momentum", "trend", "risk", "spread")
 
@@ -221,3 +223,38 @@ def run_screen(session: Session, portfolio: dict, preset: str = "balanced") -> l
         ))
     results.sort(key=lambda r: (r.label == "insufficient", -(r.score or 0)))
     return results
+
+
+_screens = ResultCache("screener", max_entries=32)
+
+
+def profile_for(session: Session, portfolio_id: int, user_id: int, stale_ok: bool = True) -> dict:
+    """What the portfolio already holds, for the spread factor and to leave holdings out."""
+    from app.analysis.service import cached_signals, compute_signals
+
+    if stale_ok:
+        (portfolio, _, _), _ = cached_signals(session, portfolio_id, user_id)
+    else:
+        portfolio, _, _ = compute_signals(session, portfolio_id, user_id)
+    held = {p.isin for p in portfolio.positions}
+    products = session.scalars(select(Product).where(Product.isin.in_(held))).all() if held else []
+    names = {p.fundamentals.get("name") for p in products if p.fundamentals.get("name")}
+    return portfolio_profile(portfolio.positions, names)
+
+
+def screen_for(session: Session, portfolio_id: int, user_id: int, preset: str, wait: float | None = WAIT_FOR_FRESH):
+    """((results, profile), stale) for a portfolio and preset."""
+    from app.analysis.service import factory_for
+
+    factory = factory_for(session)
+
+    def calculate():
+        own = factory()
+        try:
+            profile = profile_for(own, portfolio_id, user_id, stale_ok=False)
+            return run_screen(own, profile, preset), profile
+        finally:
+            own.close()
+
+    version = (data_version(session), screener_version(session))
+    return _screens.get((portfolio_id, user_id, preset), version, calculate, wait=wait)

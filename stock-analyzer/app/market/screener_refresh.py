@@ -12,17 +12,17 @@ import logging
 import threading
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.analysis.metrics import compute_dividend_metrics, compute_price_metrics
 from app.analysis.service import load_dividends, load_prices
 from app.db import session_scope
 from app.market.provider import MarketDataProvider
-from app.market.refresh import refresh_dividends, refresh_fx, refresh_prices
+from app.market.refresh import fetch_fx, fetch_prices, refresh_prices, store_dividends, store_fx, store_prices
 from app.models import ScreenerStock
 from app.portfolio.positions import latest_fx, normalise_currency
-from app.settings_store import DEFAULT_BENCHMARK, bump_data_version, get_setting, set_setting
+from app.settings_store import DEFAULT_BENCHMARK, bump_screener_version, get_setting, set_setting
 
 log = logging.getLogger(__name__)
 
@@ -96,11 +96,15 @@ def refresh_stock(session: Session, provider: MarketDataProvider, stock: Screene
     fundamentals = provider.fundamentals(stock.ticker) or {}
     if not fundamentals.get("currency") and not fundamentals.get("name"):
         raise LookupError("Yahoo kent deze ticker niet")
-    refresh_prices(session, provider, stock.ticker)
-    refresh_dividends(session, provider, stock.ticker)
+    # Download everything before writing, so the write lock isn't held while waiting for Yahoo.
+    replace_all, frame = fetch_prices(session, provider, stock.ticker)
+    dividends = provider.dividends(stock.ticker)
     major, _ = normalise_currency(fundamentals.get("currency"))
-    if major and major != "EUR" and latest_fx(session, major) is None:
-        refresh_fx(session, provider, major)
+    fx = fetch_fx(session, provider, major) if major and major != "EUR" and latest_fx(session, major) is None else None
+    store_prices(session, stock.ticker, replace_all, frame)
+    store_dividends(session, stock.ticker, dividends)
+    if fx is not None:
+        store_fx(session, major, fx)
     stock.name = fundamentals.get("name") or stock.name
     stock.sector = fundamentals.get("sector") or stock.sector
     stock.country = fundamentals.get("country") or stock.country
@@ -159,7 +163,8 @@ def refresh_batch(factory: sessionmaker[Session], provider: MarketDataProvider, 
         }
         with session_scope(factory) as session:
             set_setting(session, "screener_status", status)
-            bump_data_version(session)
+            # Only the screener's pages change. Portfolio pages keep their results.
+            bump_screener_version(session)
         return status
     except Exception as exc:
         log.exception("Screener refresh failed")
@@ -178,10 +183,11 @@ def screener_status(session: Session) -> dict:
 
 
 def screener_counts(session: Session) -> dict:
-    rows = session.execute(select(ScreenerStock.enabled, ScreenerStock.last_refresh, ScreenerStock.refresh_error)).all()
-    enabled = [r for r in rows if r[0]]
-    return {
-        "total": len(enabled),
-        "with_data": sum(1 for r in enabled if r[1] is not None and r[2] is None),
-        "errors": sum(1 for r in enabled if r[2]),
-    }
+    # Counted by the database: reading every row took up to a second while calculations ran.
+    has_data = (ScreenerStock.last_refresh.is_not(None)) & (ScreenerStock.refresh_error.is_(None))
+    has_error = (ScreenerStock.refresh_error.is_not(None)) & (ScreenerStock.refresh_error != "")
+    total, with_data, errors = session.execute(
+        select(func.count(), func.sum(case((has_data, 1), else_=0)), func.sum(case((has_error, 1), else_=0)))
+        .where(ScreenerStock.enabled.is_(True))
+    ).one()
+    return {"total": total or 0, "with_data": with_data or 0, "errors": errors or 0}

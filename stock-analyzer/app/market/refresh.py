@@ -3,6 +3,9 @@
 Only new days are fetched. If recent stored values no longer match Yahoo's, a split
 or dividend has changed the adjusted history, so that ticker is fetched in full again.
 A failure for one stock is recorded on that stock, and cached data stays usable.
+
+Everything for a stock is downloaded before anything is written, so the database's write
+lock is never held while waiting for Yahoo.
 """
 from __future__ import annotations
 
@@ -60,7 +63,8 @@ def _stored_prices(session: Session, ticker: str, since: dt.date) -> dict[dt.dat
     return {row[0]: row[1] for row in rows}
 
 
-def refresh_prices(session: Session, provider: MarketDataProvider, ticker: str) -> None:
+def fetch_prices(session: Session, provider: MarketDataProvider, ticker: str) -> tuple[bool, pd.DataFrame]:
+    """Download what's new. Returns (replace_all, frame). Reads only, writes nothing."""
     last = session.scalars(
         select(Price.date).where(Price.ticker == ticker).order_by(Price.date.desc()).limit(1)
     ).first()
@@ -69,9 +73,7 @@ def refresh_prices(session: Session, provider: MarketDataProvider, ticker: str) 
         select(Price.date).where(Price.ticker == ticker, Price.high.is_(None)).limit(1)
     ).first() is not None
     if last is None or missing_highs:
-        frame = provider.price_history(ticker, None)
-        _upsert_prices(session, ticker, frame)
-        return
+        return False, provider.price_history(ticker, None)
     since = last - dt.timedelta(days=OVERLAP_DAYS)
     frame = provider.price_history(ticker, since)
     stored = _stored_prices(session, ticker, since)
@@ -83,15 +85,26 @@ def refresh_prices(session: Session, provider: MarketDataProvider, ticker: str) 
             break
     if revised:
         full = provider.price_history(ticker, None)
-        if not full.empty:
-            session.execute(delete(Price).where(Price.ticker == ticker))
-            _upsert_prices(session, ticker, full)
-        return
-    _upsert_prices(session, ticker, frame)
+        return (True, full) if not full.empty else (False, full.iloc[0:0])
+    return False, frame
+
+
+def store_prices(session: Session, ticker: str, replace_all: bool, frame: pd.DataFrame) -> None:
+    if replace_all:
+        session.execute(delete(Price).where(Price.ticker == ticker))
+    if not frame.empty:
+        _upsert_prices(session, ticker, frame)
+
+
+def refresh_prices(session: Session, provider: MarketDataProvider, ticker: str) -> None:
+    store_prices(session, ticker, *fetch_prices(session, provider, ticker))
 
 
 def refresh_dividends(session: Session, provider: MarketDataProvider, ticker: str) -> None:
-    series = provider.dividends(ticker)
+    store_dividends(session, ticker, provider.dividends(ticker))
+
+
+def store_dividends(session: Session, ticker: str, series: pd.Series) -> None:
     if series.empty:
         return
     rows = [{"ticker": ticker, "ex_date": date, "amount": float(amount)} for date, amount in series.items()]
@@ -104,10 +117,17 @@ def refresh_dividends(session: Session, provider: MarketDataProvider, ticker: st
 
 
 def refresh_fx(session: Session, provider: MarketDataProvider, currency: str) -> None:
+    store_fx(session, currency, fetch_fx(session, provider, currency))
+
+
+def fetch_fx(session: Session, provider: MarketDataProvider, currency: str) -> pd.Series:
     last = session.scalars(
         select(FxRate.date).where(FxRate.currency == currency).order_by(FxRate.date.desc()).limit(1)
     ).first()
-    series = provider.fx_history(currency, last)
+    return provider.fx_history(currency, last)
+
+
+def store_fx(session: Session, currency: str, series: pd.Series) -> None:
     if series.empty:
         return
     rows = [{"currency": currency, "date": date, "eur_per_unit": float(rate)} for date, rate in series.items()]
@@ -120,14 +140,17 @@ def refresh_fx(session: Session, provider: MarketDataProvider, currency: str) ->
 
 
 def _refresh_product(session: Session, provider: MarketDataProvider, product: Product) -> None:
+    # Download first. Changing `product` before the reads below would start the write early.
     fundamentals = provider.fundamentals(product.ticker) or {}
+    replace_all, frame = fetch_prices(session, provider, product.ticker)
+    dividends = provider.dividends(product.ticker)
     product.fundamentals_json = json.dumps(fundamentals)
     product.currency = fundamentals.get("currency") or product.currency
     product.sector = fundamentals.get("sector") or product.sector
     product.country = fundamentals.get("country") or product.country
     product.quote_type = fundamentals.get("quote_type") or product.quote_type
-    refresh_prices(session, provider, product.ticker)
-    refresh_dividends(session, provider, product.ticker)
+    store_prices(session, product.ticker, replace_all, frame)
+    store_dividends(session, product.ticker, dividends)
 
 
 def refresh_all(factory: sessionmaker[Session], provider: MarketDataProvider) -> dict:

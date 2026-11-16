@@ -113,6 +113,7 @@ T = {
     "dash_unpriced": "{n} positie(s) zonder actuele koers tellen niet mee in de waarde.",
     "dash_refresh": "Marktdata vernieuwen",
     "dash_refreshing": "Marktdata wordt vernieuwd…",
+    "updating_notice": "Nieuwe cijfers worden berekend. Je ziet nog de vorige; de pagina werkt zichzelf bij.",
     "dash_last_refresh": "Laatst vernieuwd: {when}",
     "dash_refresh_failed": "{failed} van {total} mislukt, zie Instellingen.",
     "dash_warnings": "Aandachtspunten bij de import",

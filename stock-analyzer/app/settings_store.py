@@ -73,8 +73,23 @@ def all_benchmarks(session: Session) -> set[str]:
 
 
 def data_version(session: Session) -> int:
+    """Raised when portfolio data, holdings' market data or analysis settings change."""
     return int(get_setting(session, "data_version", 0))
 
 
 def bump_data_version(session: Session) -> None:
     set_setting(session, "data_version", data_version(session) + 1)
+
+
+def screener_version(session: Session) -> int:
+    """Raised when the screener's stocks are refreshed. Doesn't touch the portfolio pages."""
+    return int(get_setting(session, "screener_version", 0))
+
+
+def bump_screener_version(session: Session) -> None:
+    set_setting(session, "screener_version", screener_version(session) + 1)
+
+
+def market_version(session: Session) -> tuple[int, int]:
+    """Changes whenever any stored price can have changed."""
+    return data_version(session), screener_version(session)

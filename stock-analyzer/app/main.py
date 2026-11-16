@@ -7,10 +7,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.analysis.warm import warm_up
 from app.auth import user_count
 from app.config import Config, load_config
 from app.db import make_engine, make_session_factory, session_scope
@@ -42,9 +44,13 @@ def create_app(config: Config | None = None, provider=None, seed: bool = True, a
         if config.scheduler_enabled:
             def nightly():
                 refresh_all(factory, app.state.get_provider())
+                warm_up(factory)
                 refresh_batch(factory, app.state.get_provider(), config.screener_batch)
+                warm_up(factory)
 
             scheduler = start_scheduler(nightly, config.refresh_hour, config.timezone)
+            # So the first visit after a restart doesn't wait for the calculations.
+            warm_up(factory)
         yield
         if scheduler:
             scheduler.shutdown(wait=False)
@@ -64,6 +70,10 @@ def create_app(config: Config | None = None, provider=None, seed: bool = True, a
     app.state.get_provider = _get_provider
     app.state.ask_client = ask_client
 
+    def _lookup(user_id):
+        with session_scope(factory) as session:
+            return user_count(session) > 0, session.get(User, user_id) if user_id else None
+
     @app.middleware("http")
     async def guard(request: Request, call_next):
         # Reject form posts sent from another site to this tool.
@@ -73,12 +83,12 @@ def create_app(config: Config | None = None, provider=None, seed: bool = True, a
                 return PlainTextResponse("Verzoek van een andere site geweigerd.", status_code=403)
         path = request.url.path
         request.state.user = None
-        with session_scope(factory) as session:
-            has_users = user_count(session) > 0
-            user_id = request.session.get("user_id")
-            user = session.get(User, user_id) if user_id else None
-            if user is not None and request.session.get("sv") == user.session_version:
-                request.state.user = user
+        if path.startswith("/static/"):
+            return await call_next(request)
+        # Database work runs in a worker thread, so it never holds up other requests.
+        has_users, user = await run_in_threadpool(_lookup, request.session.get("user_id"))
+        if user is not None and request.session.get("sv") == user.session_version:
+            request.state.user = user
         if path.startswith(PUBLIC_PATHS):
             return await call_next(request)
         if not has_users:
