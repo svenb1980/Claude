@@ -93,12 +93,14 @@ VERSLAGGEVER ─► Teams (via Power Automate-webhook)
 ## Wat ik nog van je nodig heb
 
 1. **Power Automate-flow** (Fase 1). Maak in Teams → *Workflows* de flow
-   *"Post to a chat when a webhook request is received"* naar een chat met jezelf of met de Workflows-bot, en geef mij de URL.
-   Ik geef je hiervoor een stappenlijst. De URL bewaren we buiten de repo.
-2. **Akkoord op netwerktoegang** voor de host van die webhook. Daar krijg je een goedkeuringsvraag voor.
+   *"Send webhook alerts to a chat"* (in Power Automate: *Post to a chat when a webhook request is received*). Die post in je eigen
+   chat met de Workflows-bot. Je geeft mij alleen de **host** van de URL. De volledige URL zet je zelf als omgevingsvariabele
+   `TEAMS_WEBHOOK_URL` in een aparte cloud-omgeving voor deze agent. Zo staat hij niet in de repo en niet in de chat.
+2. **Akkoord op een aparte cloud-omgeving** die alleen die webhook-host toelaat. Daar krijg je een goedkeuringsvraag voor.
+   Je standaardomgeving gebruiken al je sessies, dus de webhook-toegang blijft daar buiten.
 3. **VIP-lijst**: je leidinggevende en sleutelpersonen (Fase 2). Je vult die in bij Action Desk, niet in de repo.
 4. **1-op-1-ritme per teamlid** (Fase 4). Ik vul de lijst vooraf met de mensen uit je standup-chats, jij zet het ritme erbij.
-5. **Tijden bevestigen**: briefing om 07:45 en de uurcheck van 08:00 tot 17:00. Klopt dat met je werkdag?
+5. ~~Tijden bevestigen~~: bevestigd op 20-11-2026. Briefing om 07:45 en de uurcheck van 08:00 tot 17:00 (Europe/Amsterdam).
 
 ## Risico's en aandachtspunten
 
