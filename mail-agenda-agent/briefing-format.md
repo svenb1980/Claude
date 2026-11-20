@@ -63,3 +63,41 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
 | `days[]` | Vandaag en de volgende werkdag. `routine` = aantal standups en huddles (niet getoond). `issues` = waarschuwingen. `meetings` = niet-routine meetings met `start`/`end` als `HH:MM` lokale tijd |
 | `notes` | Korte meldingen over wat niet lukte. Maximaal 4 |
 | `link` | Altijd een `https://`-link, ongewijzigd uit Outlook. Andere links toont Cyberdeck als gewone tekst |
+
+---
+
+# Documenten van de urgent-check
+
+Ook deze twee staan in de eigen opslag van Cyberdeck (`collection: "data/users/me"`), dus alleen jij kunt ze lezen.
+
+## `agentsettings`: instellingen van de agent
+
+```json
+{ "v": 1, "vips": [ { "name": "Display Name", "email": "naam@bedrijf.nl" } ], "updatedAt": "ISO UTC" }
+```
+
+`vips` zijn de mensen van wie elke mail meteen gemeld wordt: je leidinggevende en andere sleutelpersonen. Claude vult de lijst
+op jouw verzoek. Deze persoonsgegevens staan bewust niet in de repo.
+
+## `agenturgent`: geheugen en meldingen
+
+```json
+{
+  "v": 1,
+  "lastCheck": "2026-11-20T13:31:05Z",
+  "seen": [ "<internetMessageId>" ],
+  "alerts": [
+    { "id": "<internetMessageId>", "at": "2026-11-20T13:31:05Z", "when": "2026-11-20T13:12:40Z", "title": "Production down at customer X",
+      "from": "Display Name", "kind": "incident", "why": "Asks you to free up a developer today.", "link": "https://outlook.office365.com/…" }
+  ]
+}
+```
+
+| Veld | Betekenis |
+|---|---|
+| `lastCheck` | Moment van de laatste zoekopdracht. De volgende check begint 10 minuten eerder, om niets te missen |
+| `seen` | Mails die rond `lastCheck` al bekeken zijn, zodat die overlap niet dubbel gemeld wordt |
+| `alerts` | Urgente meldingen van de afgelopen 3 dagen, nieuwste eerst, maximaal 20. `kind` is `vip` of `incident` |
+
+Cyberdeck toont de meldingen van **vandaag** in rood bovenaan het blok *Morning briefing*, ook als het blok is ingeklapt. Onderaan
+staat het tijdstip van de laatste check.

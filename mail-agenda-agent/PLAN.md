@@ -8,6 +8,11 @@ taak *Mail- en agenda-agent – ochtendbriefing* (ma–vr 07:45) heeft de Micros
 65 mails en de agenda in ongeveer 1,5 minuut en schreef de briefing in Cyberdeck. Eén run kost ongeveer $1,60. Fase 2 (de
 urgent-check van elk uur) moet daarom veel lichter zijn: alleen nieuwe mail sinds de vorige check, en alleen VIP's en incidenten.
 
+**Fase 2 in aanbouw:** de instructies staan in `prompts/urgent-check.md`. Cyberdeck toont de urgente meldingen van vandaag in rood
+bovenaan het Briefing-blok. De geplande taak *Mail- en agenda-agent – urgent-check* (ma–vr 08:31–16:31, elk uur, met pushmelding)
+bestaat maar staat uit, tot de Microsoft 365-koppeling erop staat en de testrun geslaagd is. De VIP-lijst staat in het document
+`agentsettings` in Cyberdeck en is nog leeg.
+
 ---
 
 ## Vastgelegde keuzes
