@@ -147,6 +147,11 @@ Per mail:
    - Beantwoord wat je uit de mail en de draad zelf kunt beantwoorden. Wat alleen de gebruiker weet, zet je als invulplek
      tussen rechte haken, zoals `[naam projectleider]` of `[datum]`.
    - **Verzin niets:** geen feiten, toezeggingen, data, bedragen of namen die niet in de mail staan.
+   - **Beslis niets namens de gebruiker.** Doet de afzender een voorstel of vraagt hij om een keuze (bijvoorbeeld "intern
+     doorbelasten lijkt mij het eenvoudigst"), ga daar dan niet mee akkoord en wijs het ook niet af. Zet er een invulplek
+     voor, zoals `[reactie op voorstel intern doorbelasten]`.
+   - **Controleer vóór het aanmaken elke zin:** belooft, besluit of bevestigt hij iets namens de gebruiker? Vervang die zin
+     dan door een invulplek. Na het aanmaken kun je het concept niet meer aanpassen.
    - Onderteken met een groet en de voornaam van de gebruiker uit `get_me` ("Groet," in het Nederlands, "Kind regards," in het Engels).
 5. Zet bij het action-item `draft: { "link": <webLink uit het antwoord van de tool> }`.
 
