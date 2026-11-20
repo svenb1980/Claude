@@ -100,6 +100,20 @@ eerdere (ook verzonden) mail, op SharePoint/OneDrive en in Confluence en Jira. W
 vindt, blijft een invulplek tussen rechte haken. Besluiten laat hij altijd aan jou. Onder *Draft ready* staat in één zin wat
 hij heeft opgezocht en wat nog openstaat. Dit maakt een briefing iets duurder (geschat $2,50–3 per run).
 
+**Fase 4 in test (20-11-2026):** de ochtendbriefing heeft een stap *Je team* (instructies stap 7). Cyberdeck toont die als
+kolom *Your team* met drie onderdelen:
+- **1:1s:** wie achterloopt op het 1-op-1-ritme, of bij wie de volgende 1-op-1 te laat gepland staat. Dit verschijnt alleen
+  vlak voor of na de uiterste datum. De agent zoekt per persoon de 1-op-1's in je agenda (afspraken met je voornaam in de
+  titel en alleen die persoon erbij).
+- **Waiting on your reply:** mail van je mensen die twee werkdagen of langer onbeantwoord is. De agent onthoudt die via de
+  vorige briefing, dus dit kost weinig extra.
+- **Your promises:** je eigen toezeggingen uit verzonden mail van de afgelopen 10 dagen die nog openstaan.
+
+De lijst met je mensen en hun ritme staat in `agentsettings` (`people`), niet in de repo. Claude vulde die vooraf uit je agenda:
+3 personen wekelijks, 2 om de 2 weken, 1 om de 4 weken en 1 om de 6 weken. Aanpassen doe je in Cyberdeck onder
+*Settings › Mail agent*; daar staan ook de VIP's. Met één klik voeg je je directe medewerkers uit *People* toe, zonder vast ritme.
+Verlof en ziekte deed Cyberdeck al (`team.js`), dus de agent doet daar niets mee.
+
 ## Overlap met Cyberdeck
 
 De live Action Desk heet nu **Cyberdeck** en kan al veel zolang je hem open hebt: mail laten triëren door Claude, een kolom
@@ -125,7 +139,8 @@ het 1-op-1-ritme; dat blijft voor Fase 4.
 1. ~~Akkoord op pushmeldingen~~: akkoord op 20-11-2026, voor de urgent-check (Fase 2).
 2. ~~Microsoft 365-koppeling op de geplande taak~~: aangezet op 20-11-2026, testrun geslaagd.
 3. ~~VIP-lijst~~: twee personen, op 20-11-2026 in Cyberdeck gezet (`agentsettings`). Aanpassen? Vraag het Claude.
-4. **1-op-1-ritme per teamlid** (Fase 4). Ik vul de lijst vooraf met de mensen uit je standup-chats, jij zet het ritme erbij.
+4. ~~1-op-1-ritme per teamlid~~: op 20-11-2026 vooraf ingevuld uit je agenda (7 personen). Controleren en aanvullen in
+   Cyberdeck, *Settings › Mail agent*.
 5. ~~Tijden bevestigen~~: bevestigd op 20-11-2026. Briefing om 07:45 en de uurcheck van 08:00 tot 17:00 (Europe/Amsterdam).
 
 ## Risico's en aandachtspunten
