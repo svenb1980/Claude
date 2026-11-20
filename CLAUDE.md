@@ -14,6 +14,7 @@ This is a scratch/personal project directory containing three standalone files:
 | `salesforce-approver/` | Chrome extension (MV3) that approves Salesforce timecards when the Mass Approval page opens and hands a report of each run to Action Desk through `bridge.js` (a content script on claude.ai frames; window.postMessage hello → reports → ack) |
 | `planon-leave-approver/` | Chrome extension (MV3) for Planon Self-Service "Requests to approve" (`*.planoncloud.com/case/*`). Adds a panel that opens each leave request, checks `# Hours` against From/Till (workday 08:30–17:00, 0.5h break 12:30–13:00, weekends skipped) and bulk-approves only matching requests. Dutch UI; see `LEESMIJ.md` |
 | `website-hoefsmid/` | Dutch static website (HTML/CSS/JS, no build) about the dream job of farrier (hoefsmid). Pages are listed in `js/menu.js`; `informatie-hoefsmid.pdf` is a generated PDF of all pages. Master copy lives in the claude.ai project files; this folder is a mirror pushed after every change |
+| `project-agent/` | Plan and functional requirements (Dutch) for the weekly project agent: a scheduled Claude task that reads the user's projects from Confluence (PAF Project Organization + Project Overview pages) and Jira, and writes a `projectstatus` document that Cyberdeck (the evolved Action Desk artifact) shows behind a Projects toolbar button |
 | `toilet-display.yaml` | ESPHome config for an ESP32 + Waveshare 1.54" e-ink toilet occupancy display |
 
 ## Git Workflow
