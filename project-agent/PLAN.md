@@ -5,10 +5,11 @@ moet gebeuren. Het resultaat staat in **Cyberdeck**, achter een eigen knop **Pro
 pushmelding. Hij werkt net zoals de mail- en agenda-agent: een geplande Claude-taak schrijft een document in de opslag van
 Cyberdeck en Cyberdeck toont het.
 
-Status op 20-11-2026: **fase 1 is klaar.** De instructies staan in `prompts/weekcheck.md` en het formaat in
+Status op 20-11-2026: **fase 1 en 2 zijn klaar.** De instructies staan in `prompts/weekcheck.md` en het formaat in
 `projectstatus-format.md`. De handmatige testrun schreef het eerste `projectstatus`-document in Cyberdeck: 2 projecten rood,
-2 oranje (zie *Testrun fase 1* onderaan). De geplande taak *Projectagent – weekcheck* bestaat al, maar nog **zonder vast tijdstip en
-zonder Atlassian-koppeling**. Die koppeling voeg je zelf toe in claude.ai; daarna volgt fase 3. Fase 2 is de weergave in Cyberdeck.
+2 oranje (zie *Testrun fase 1* onderaan). Cyberdeck toont het achter de knop **Projects** in de werkbalk (zie *Fase 2*
+onderaan). De geplande taak *Projectagent – weekcheck* bestaat al, maar nog **zonder vast tijdstip en zonder
+Atlassian-koppeling**. Die koppeling voeg je zelf toe in claude.ai; daarna volgt fase 3.
 
 ---
 
@@ -227,7 +228,7 @@ PROJECTAGENT (geplande taak, maandag 07:15)
 |---|---|---|
 | 0 ✅ | Requirements samen vastleggen (dit document) | Alle keuzes gemaakt (20-11-2026) |
 | 1 ✅ | `prompts/weekcheck.md` en `projectstatus-format.md`, plus een handmatige testrun | Het document staat in de opslag van Cyberdeck en klopt met de pagina's en Jira (20-11-2026) |
-| 2 | Knop **Projects**, projectweergave en *Settings › Project agent* in Cyberdeck | Je ziet je vier projecten in Cyberdeck |
+| 2 ✅ | Knop **Projects**, projectweergave en *Settings › Project agent* in Cyberdeck | Je ziet je vier projecten in Cyberdeck (20-11-2026, versie 149) |
 | 3 | Geplande taak (maandag 07:15) met pushmelding | Twee maandagen zelfstandig gedraaid |
 | 4 | Extra's, in deze volgorde | Zie hieronder |
 
@@ -290,3 +291,24 @@ Atlassian-koppeling**. Een taak die vanuit een Claude Code-sessie wordt aangemaa
 koppelingen mee. Voeg in claude.ai bij deze taak de Atlassian-koppeling toe, net als bij de ochtendbriefing. Lukt dat niet,
 maak de taak dan daar opnieuw aan met de tekst uit `prompts/weekcheck.md`. Daarna stel ik het schema in (maandag 07:15) en
 doen we een echte testrun.
+
+---
+
+## Fase 2: Projects in Cyberdeck (20-11-2026)
+
+De code staat in `cyberdeck/projects.js` en `cyberdeck/projects.css` in deze map. Cyberdeck laadt ze als `js/projects.js`
+en `css/projects.css`. In `index.html` van Cyberdeck zijn vijf dingen toegevoegd: de stylesheet, de knop `#btn-projects`
+naast Agenda, het blok `#projects` bovenaan *Your actions*, het blok `#projectagent-settings` in Settings en de scripttag
+na `agent-briefing.js`.
+
+- **Knop Projects** (FR-F1, FR-F5). Opent en sluit de weergave; Cyberdeck onthoudt in je browser of hij open stond. Een stip
+  in de kleur van het slechtste project; de knoptekst noemt de aantallen ("Projects: 2 red, 2 amber").
+- **Weergave** (FR-F2, FR-F3). Bovenaan de headline van de agent, week en tijdstip van de check, en de aantallen per kleur.
+  Per project een kaart: kleur en trend, naam (link naar de projectpagina), projectleider en PAF-status, de zin waarom,
+  de deadline met het aantal dagen (live uitgerekend, dus ook later in de week juist), een voortgangsbalk en de
+  aandachtspunten. *Next up*, *Last 7 days* en *Open points* klappen in; open punten van jezelf hebben het label *You*.
+  Jira-sleutels in de teksten zijn links. Onderaan: *Project page* en *All Jira items*. Twee kolommen als er ruimte is,
+  één op je telefoon. Werkt in light, dark en cyberpunk.
+- **Oude check.** Is de check ouder dan 8 dagen, dan zegt de weergave dat en verwijst naar de geplande taak.
+- **Settings › Project agent** (FR-F4). Koppelingen tussen een project en zijn pagina bekijken, toevoegen en verwijderen,
+  met extra Jira-sleutels. Een pagina mag je als link uit Confluence plakken. Opslag in `projectsettings`.
