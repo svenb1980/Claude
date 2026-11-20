@@ -69,7 +69,7 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
 | `createdAt` | Moment van schrijven, ISO in UTC |
 | `headline` | Eén zin van maximaal ongeveer 110 tekens: het belangrijkste van de dag |
 | `mail.since` | Begin van het mailvenster (vorige werkdag 07:45 lokaal) |
-| `mail.action` | Mail die iets van jou vraagt, het belangrijkste eerst. Maximaal 12. `draft.link` wijst naar het conceptantwoord dat de agent in je Outlook-map *Concepten* zette (`existing: true` als dat er al stond). `draft.note` zegt wat de agent heeft opgezocht en waar, en wat nog openstaat. Cyberdeck toont *Draft ready* met die uitleg eronder |
+| `mail.action` | Mail die iets van jou vraagt, het belangrijkste eerst. Maximaal 12. `draft.link` wijst naar het conceptantwoord dat de agent in je Outlook-map *Concepten* zette (`existing: true` als dat er al stond). `draft.note` zegt wat de agent heeft opgezocht en waar, en wat nog openstaat; bij een bestaand concept neemt de agent die uitleg over uit de vorige briefing. Cyberdeck toont *Draft ready* met die uitleg eronder |
 | `mail.info` | Relevant maar geen actie, of al beantwoord. Maximaal 30. Staat in Action Desk ingeklapt |
 | `mail.noise` | Alleen aantallen: meldingen, timecards, vergaderreacties en dergelijke |
 | `days[]` | Vandaag en de volgende werkdag. `routine` = aantal standups en huddles (niet getoond). `issues` = waarschuwingen. `meetings` = niet-routine meetings met `start`/`end` als `HH:MM` lokale tijd |

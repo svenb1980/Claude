@@ -144,7 +144,9 @@ vergaderuitnodigingen, systeem- of no-reply-mail, mail die de gebruiker al beant
 Per mail:
 1. **Bestaat er al een concept?** Zoek met `outlook_email_search` met `folderName: "Drafts"` en `query` = het onderwerp
    zonder `RE:`/`FW:`. Staat er al een concept met dat onderwerp, maak dan geen nieuw. Zet bij het action-item
-   `draft: { "link": <webLink van dat concept>, "existing": true }`.
+   `draft: { "link": <webLink van dat concept>, "existing": true }`. Stond er in de vorige briefing (stap 1.6) een item
+   met hetzelfde onderwerp en een `draft.note`, neem die `note` dan ongewijzigd over. Zo blijft de uitleg van het
+   opzoekwerk zichtbaar zolang het concept er is.
 2. **Lees de mail** met `read_resource`, zodat je weet wat er precies gevraagd wordt en wie er in To en CC staan.
 3. **Zoek eerst zelf alles op wat het antwoord nodig heeft.** De gebruiker wil het concept alleen nog hoeven controleren.
    Vraagt de mail om gegevens, namen, e-mailadressen, cijfers, data of eerdere afspraken, zoek die dan op in:
