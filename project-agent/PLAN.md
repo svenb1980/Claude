@@ -5,11 +5,11 @@ moet gebeuren. Het resultaat staat in **Cyberdeck**, achter een eigen knop **Pro
 pushmelding. Hij werkt net zoals de mail- en agenda-agent: een geplande Claude-taak schrijft een document in de opslag van
 Cyberdeck en Cyberdeck toont het.
 
-Status op 20-11-2026: **fase 1 en 2 zijn klaar.** De instructies staan in `prompts/weekcheck.md` en het formaat in
-`projectstatus-format.md`. De handmatige testrun schreef het eerste `projectstatus`-document in Cyberdeck: 2 projecten rood,
-2 oranje (zie *Testrun fase 1* onderaan). Cyberdeck toont het achter de knop **Projects** in de werkbalk (zie *Fase 2*
-onderaan). De geplande taak *Projectagent – weekcheck* bestaat al, maar nog **zonder vast tijdstip en zonder
-Atlassian-koppeling**. Die koppeling voeg je zelf toe in claude.ai; daarna volgt fase 3.
+Status op 20-11-2026: **fase 1 en 2 zijn klaar, fase 3 draait.** De instructies staan in `prompts/weekcheck.md` en het
+formaat in `projectstatus-format.md`. Cyberdeck toont het resultaat achter de knop **Projects** in de werkbalk (zie *Fase 2*
+onderaan). De geplande taak *Projectagent – weekcheck* heeft de Atlassian-koppeling en draait **elke maandag om 07:15**, met
+pushmelding. De eerste echte testrun (20-11-2026) duurde 2 minuten en kostte $1,47 (zie *Fase 3* onderaan). Fase 3 is klaar
+als de taak twee maandagen zelfstandig heeft gedraaid (23 en 30 november).
 
 ---
 
@@ -229,7 +229,7 @@ PROJECTAGENT (geplande taak, maandag 07:15)
 | 0 ✅ | Requirements samen vastleggen (dit document) | Alle keuzes gemaakt (20-11-2026) |
 | 1 ✅ | `prompts/weekcheck.md` en `projectstatus-format.md`, plus een handmatige testrun | Het document staat in de opslag van Cyberdeck en klopt met de pagina's en Jira (20-11-2026) |
 | 2 ✅ | Knop **Projects**, projectweergave en *Settings › Project agent* in Cyberdeck | Je ziet je vier projecten in Cyberdeck (20-11-2026, versie 149) |
-| 3 | Geplande taak (maandag 07:15) met pushmelding | Twee maandagen zelfstandig gedraaid |
+| 3 ⏳ | Geplande taak (maandag 07:15) met pushmelding | Twee maandagen zelfstandig gedraaid (23 en 30 november 2026) |
 | 4 | Extra's, in deze volgorde | Zie hieronder |
 
 **Fase 4, de extra's:**
@@ -312,3 +312,28 @@ na `agent-briefing.js`.
 - **Oude check.** Is de check ouder dan 8 dagen, dan zegt de weergave dat en verwijst naar de geplande taak.
 - **Settings › Project agent** (FR-F4). Koppelingen tussen een project en zijn pagina bekijken, toevoegen en verwijderen,
   met extra Jira-sleutels. Een pagina mag je als link uit Confluence plakken. Opslag in `projectsettings`.
+
+---
+
+## Fase 3: de geplande taak (20-11-2026)
+
+- **Taak:** *Projectagent – weekcheck* (`trig_014rdjbav9YTSp7Mk7ecSf2R`), met de Atlassian-koppeling (v2) en pushmelding.
+  Schema: `CRON_TZ=Europe/Amsterdam 15 7 * * 1`, dus elke maandag om 07:15. Na het toevoegen van de koppeling stond de taak
+  op maandag 09:00; die is teruggezet naar de afgesproken 07:15.
+- **Model:** het standaardmodel. De weekcheck moet tabellen en regels precies toepassen. Een lichter model zoals Haiku
+  (dat de urgent-check van de mail-agent gebruikt) is goedkoper, maar levert hier minder betrouwbare kleuren op.
+
+**Testrun 20-11-2026 15:00** (handmatig gestart): duurde **2 minuten** (19 stappen) en kostte **$1,47**. Dat is ongeveer
+$6 per maand. Het resultaat kwam overeen met de handmatige testrun van fase 1: dezelfde kleuren, voortgang, deadlines en
+aandachtspunten. De vergelijking met de vorige week werkt: alle trends zijn *same*, en de run zag dat TEC-14517 sinds de
+ochtend van *New* naar *Ready to pickup* was gegaan. Pushmelding:
+
+```
+Projects week 47: 2 red, 2 amber, 0 green
+🔴 Java 25 (same): due in 10 days with 0 of 7 done; 4 L136 items idle for 29 days
+🔴 Event Connector Improvement (same): FCN-3782 (L136) idle for 23 days
+🟠 GraphQL (same): no agreed end date; FRC-4755 has no owner
+🟠 WEBDAV (same): no agreed end date; the roadmap ends in L140 (Mar '27)
+```
+
+**Nog te volgen:** de runs van maandag 23 en 30 november. Daarna is fase 3 klaar en kan fase 4 beginnen.
