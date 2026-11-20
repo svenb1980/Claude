@@ -53,6 +53,12 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
     },
     { "date": "2026-11-24", "label": "Tomorrow", "routine": 5, "issues": [], "meetings": [] }
   ],
+  "team": {
+    "oneOnOnes": [ { "name": "Display Name", "every": 14, "text": "No 1:1 planned; the last was 16 days ago.", "last": "2026-11-07", "next": "", "link": "https://…" } ],
+    "oneOnOnesOk": 6,
+    "waiting": [ { "title": "Question about the release plan", "from": "Display Name", "when": "2026-11-18T09:12:00Z", "days": 3, "link": "https://…" } ],
+    "promises": [ { "what": "Send the missing WBSO project leads", "to": "Display Name", "when": "2026-11-17T15:40:00Z", "due": "due Fri", "link": "https://…" } ]
+  },
   "notes": [ "Calendar for tomorrow could not be read; try Refresh in Outlook." ]
 }
 ```
@@ -68,6 +74,10 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
 | `mail.noise` | Alleen aantallen: meldingen, timecards, vergaderreacties en dergelijke |
 | `days[]` | Vandaag en de volgende werkdag. `routine` = aantal standups en huddles (niet getoond). `issues` = waarschuwingen. `meetings` = niet-routine meetings met `start`/`end` als `HH:MM` lokale tijd |
 | `meetings[].prep` | Alleen voor vandaag, bij niet-routine meetings met minstens twee andere deelnemers (maximaal 4): `goal` (doel uit de uitnodiging), `mails` (maximaal 3 gerelateerde mails van de afgelopen 14 dagen), `jira` (maximaal 3 issues, met status als de Atlassian-koppeling er is) en `points` (maximaal 3 open punten). Cyberdeck toont het als uitklapbaar *Prep* onder de meeting |
+| `team.oneOnOnes` | Mensen uit `agentsettings.people` bij wie de 1-op-1 achterloopt op het ritme (`every` dagen), of bij wie de volgende te laat gepland staat. Alleen gemeld als de uiterste datum binnen 7 dagen valt of voorbij is. `last`/`next` als `JJJJ-MM-DD` |
+| `team.oneOnOnesOk` | Aantal mensen bij wie het 1-op-1-ritme klopt |
+| `team.waiting` | Mail van je mensen die twee werkdagen of langer onbeantwoord is (maximaal 8, oudste eerst). De agent onthoudt die via de vorige briefing |
+| `team.promises` | Je eigen toezeggingen uit verzonden mail van de afgelopen 10 dagen die nog openstaan (maximaal 5) |
 | `notes` | Korte meldingen over wat niet lukte. Maximaal 4 |
 | `link` | Altijd een `https://`-link, ongewijzigd uit Outlook. Andere links toont Cyberdeck als gewone tekst |
 
@@ -80,11 +90,16 @@ Ook deze twee staan in de eigen opslag van Cyberdeck (`collection: "data/users/m
 ## `agentsettings`: instellingen van de agent
 
 ```json
-{ "v": 1, "vips": [ { "name": "Display Name", "email": "naam@bedrijf.nl" } ], "updatedAt": "ISO UTC" }
+{ "v": 1,
+  "vips": [ { "name": "Display Name", "email": "naam@bedrijf.nl" } ],
+  "people": [ { "name": "Display Name", "email": "naam@bedrijf.nl", "every": 14 } ],
+  "updatedAt": "ISO UTC" }
 ```
 
-`vips` zijn de mensen van wie elke mail meteen gemeld wordt: je leidinggevende en andere sleutelpersonen. Claude vult de lijst
-op jouw verzoek. Deze persoonsgegevens staan bewust niet in de repo.
+`vips` zijn de mensen van wie elke mail meteen gemeld wordt: je leidinggevende en andere sleutelpersonen. `people` zijn je
+mensen voor de team-signalen; `every` is om de hoeveel dagen je een 1-op-1 met iemand wilt (7, 14, 21, 28 of 42; 0 = geen
+vast ritme, dan kijkt de agent alleen naar mail die blijft liggen). Beide lijsten pas je aan in Cyberdeck, onder
+*Settings › Mail agent*. Deze persoonsgegevens staan bewust niet in de repo.
 
 ## `agenturgent`: geheugen en meldingen
 
