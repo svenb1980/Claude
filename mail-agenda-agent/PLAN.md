@@ -113,6 +113,8 @@ De lijst met je mensen en hun ritme staat in `agentsettings` (`people`), niet in
 3 personen wekelijks, 2 om de 2 weken, 1 om de 4 weken en 1 om de 6 weken. Aanpassen doe je in Cyberdeck onder
 *Settings › Mail agent*; daar staan ook de VIP's. Met één klik voeg je je directe medewerkers uit *People* toe, zonder vast ritme.
 Verlof en ziekte deed Cyberdeck al (`team.js`), dus de agent doet daar niets mee.
+**Testrun 20-11-2026** (handmatig gestart om 11:45): duurde 3,2 minuten en kostte $2,79. Alle 7 1-op-1's liepen op schema,
+er wachtte geen mail van je mensen en er stond 1 open toezegging. Van de verzonden mail las de run 2 van de 3 pagina's.
 
 ## Overlap met Cyberdeck
 
