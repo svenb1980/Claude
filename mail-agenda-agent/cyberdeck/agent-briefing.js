@@ -18,7 +18,7 @@
     return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(text)}</a>` : `<b>${esc(text)}</b>`;
   };
   const draftLink = i => { const u = i.draft && typeof i.draft === "object" ? safeUrl(i.draft.link) : ""; return u ? ` <a class="adraft" href="${esc(u)}" target="_blank" rel="noopener" title="Open the reply draft in Outlook">Draft ready</a>` : ""; };
-  const mailRow = i => `<li>${link(i.title || "(no subject)", i.link)}${i.from ? ` <span class="meta">· ${esc(i.from)}</span>` : ""}${i.deadline ? ` <span class="due">· ${esc(i.deadline)}</span>` : ""}${draftLink(i)}${i.why ? `<div class="why">${esc(i.why)}</div>` : ""}</li>`;
+  const mailRow = i => `<li>${link(i.title || "(no subject)", i.link)}${i.from ? ` <span class="meta">· ${esc(i.from)}</span>` : ""}${i.deadline ? ` <span class="due">· ${esc(i.deadline)}</span>` : ""}${draftLink(i)}${i.why ? `<div class="why">${esc(i.why)}</div>` : ""}${i.draft && typeof i.draft === "object" && typeof i.draft.note === "string" && i.draft.note.trim() ? `<div class="anote">${esc(i.draft.note)}</div>` : ""}</li>`;
   function prepHtml(p) {
     if (!p || typeof p !== "object") return "";
     const mails = list(p.mails, 3).map(x => `<li>${link(x.title || "(no subject)", x.link)}${x.from ? ` <span class="meta">· ${esc(x.from)}</span>` : ""}</li>`);

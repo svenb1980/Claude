@@ -95,7 +95,10 @@ VERSLAGGEVER ─► Action Desk (eigen opslag, ook het geheugen:
 **Fase 3 in test (20-11-2026):** de ochtendbriefing bereidt nu ook de niet-routine meetings van vandaag voor (doel,
 gerelateerde mail, Jira, open punten) en zet hoogstens 5 conceptantwoorden klaar in Outlook (*Concepten*). Cyberdeck toont
 *Prep* onder de meeting en *Draft ready* bij de mail. Voor de status van Jira-issues heeft de ochtendbriefing de
-Atlassian-koppeling nodig.
+Atlassian-koppeling nodig. **Sinds 20-11-2026 zoekt de conceptschrijver eerst zelf op** wat een antwoord nodig heeft: in
+eerdere (ook verzonden) mail, op SharePoint/OneDrive en in Confluence en Jira. Wat hij vindt, vult hij in. Wat hij niet
+vindt, blijft een invulplek tussen rechte haken. Besluiten laat hij altijd aan jou. Onder *Draft ready* staat in één zin wat
+hij heeft opgezocht en wat nog openstaat. Dit maakt een briefing iets duurder (geschat $2,50–3 per run).
 
 ## Overlap met Cyberdeck
 
