@@ -54,7 +54,9 @@ Lees de pagina met `getConfluenceContent` (`detail: "full"`, `content_format: "m
 
 - **Status-blok:** Status, Product Manager, Manager Projects, STEERCO Owner en Project Lead.
 - **Laatst bijgewerkt:** de datum van `metadata.version.createdAt`.
-- **At a glance:** *Current phase* (ingekort tot ongeveer 140 tekens, zonder links) en *Next milestone*.
+- **At a glance:** *Objective*, *Current phase* (ingekort tot ongeveer 140 tekens, zonder links), *Next milestone* en *Top risks*.
+- **Introduction:** de alinea's *Value we add* (de opsomming) en *To whom*.
+- **Risk Factors:** de tabel met risico's, impact en mitigatie.
 - **Open points:** de genummerde lijst onder *Open points*. Neem per punt de vetgedrukte titel (of de eerste zin) en de
   eigenaar na "Owner:". Zet `mine: true` als de eigenaar de gebruiker noemt. Hoogstens 6.
 - **Roadmaptabel** onder *Quarterly Planning & Roadmap*. De kopregel heeft releasekolommen zoals `L136 Nov '26`. Per rij:
@@ -135,6 +137,36 @@ een `link` (het Jira-item, de Jira-zoeklink of de pagina). Hoogstens 8: eerst re
 de kleur slechter werd (green → amber → red), of bij dezelfde kleur het aantal red- en amber-punten steeg. `better` in het
 omgekeerde geval, en anders `same`.
 
+## 5b. Per project: de teksten voor de STEERCO-slide
+
+Cyberdeck maakt hiermee met één knop een STEERCO-slide per project. Schrijf ze in het Engels, kort, in de stijl van een
+statusupdate voor een stuurgroep, met Jira-sleutels tussen haakjes. Geen oordeel over personen. Houd je aan de lengtes:
+langere teksten passen niet in de vakken van de slide.
+
+- `title`: de projectnaam: de paginatitel zonder " | Project Overview". Zonder pagina: de naam uit de PAF-tabel.
+- `manager`: *Manager Projects* uit het Status-blok.
+- `summary` (hoogstens 70 tekens): de stand van het project in één regel, bijvoorbeeld "Message storage on track, SPIE
+  link not started".
+- `risk` (hoogstens 170 tekens): het grootste risico of de grootste belemmering, uit *Top risks*, de tabel *Risk Factors*
+  en je rode en oranje aandachtspunten. Concreet, met Jira-sleutels.
+- `decision`: `needed: true` alleen als een open punt of een mitigatie in *Risk Factors* de STEERCO uitdrukkelijk om een
+  besluit vraagt (bijvoorbeeld "STEERCO accepts …" of "Bring … to STEERCO for a decision"). Dan in `text` (hoogstens
+  140 tekens) welk besluit. Anders `needed: false` en `text` leeg.
+- `progress`: zes regels van hoogstens 130 tekens. Per regel hoogstens 3 werk-items, gescheiden door "; ", elk als korte
+  naam van hoogstens 6 woorden met de sleutel erachter, en de release als die er is: "Upgrade step (FCN-3782, L136)".
+  Een item staat in hoogstens één regel. Een lege regel is "".
+  - `done`: werk-items die in de afgelopen 31 dagen naar de statuscategorie `done` gingen.
+  - `cancelled`: geparkeerde items ("off the plan", "not planned") die Jira heeft gesloten (statuscategorie `done`).
+  - `inProgress`: werk-items in uitvoering waarvan de statusnaam niet op testen wijst.
+  - `inTest`: werk-items in uitvoering met een statusnaam als Test, Review, QA, Verification of Acceptance.
+  - `toPickUp`: niet-gestarte werk-items van de huidige en de volgende release.
+  - `delayed`: niet-gedane werk-items waarvan de eindrelease vóór de huidige release ligt, of die volgens de pagina naar een
+    latere release zijn verschoven (bijvoorbeeld "moved from L134 to L136").
+- `customer`:
+  - `who` (hoogstens 140 tekens): voor wie, uit *To whom*, in één zin.
+  - `value` (hoogstens 160 tekens): wat het de klant oplevert, in één zin, uit *Objective* of *Value we add*.
+  - `points`: hoogstens 3 punten van hoogstens 95 tekens uit *Value we add*.
+
 ## 6. Schrijven naar Cyberdeck
 
 1. **Volgorde:** eerst red, dan amber, dan green; binnen een kleur de vroegste deadline eerst (zonder deadline als laatste).
@@ -171,7 +203,13 @@ Formaat (de velden staan ook in `project-agent/projectstatus-format.md` in de re
       "openPoints": [ { "text": "", "owner": "", "mine": false } ],
       "jira": { "jql": "", "link": "" },
       "pageUpdated": "JJJJ-MM-DD",
-      "snapshot": { "SLEUTEL-1": "Statusnaam" }
+      "snapshot": { "SLEUTEL-1": "Statusnaam" },
+      "steerco": {
+        "title": "", "manager": "", "summary": "", "risk": "",
+        "decision": { "needed": false, "text": "" },
+        "progress": { "done": "", "cancelled": "", "inProgress": "", "inTest": "", "toPickUp": "", "delayed": "" },
+        "customer": { "who": "", "value": "", "points": [ "" ] }
+      }
     }
   ],
   "notes": []

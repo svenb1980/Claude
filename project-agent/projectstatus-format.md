@@ -37,7 +37,19 @@ Alle teksten zijn Engels. Datums zijn `JJJJ-MM-DD` (lokaal, Europe/Amsterdam), t
       "openPoints": [ { "text": "Target release and end date", "owner": "Kim van Heel", "mine": false } ],
       "jira": { "jql": "key in (TEC-9010, …) OR parent in (TEC-9010, …)", "link": "https://planon.atlassian.net/issues/?jql=…" },
       "pageUpdated": "2026-11-03",
-      "snapshot": { "TEC-14329": "Development" }
+      "snapshot": { "TEC-14329": "Development" },
+      "steerco": {
+        "title": "Java 25",
+        "manager": "Sven Burgers",
+        "summary": "Core migration in development, no target release yet",
+        "risk": "No target release: the core item (TEC-14329) slipped from L134 to L136; development rests on one developer.",
+        "decision": { "needed": false, "text": "" },
+        "progress": { "done": "", "cancelled": "", "inProgress": "JDK 25 and WildFly 41 (TEC-14329, L136)", "inTest": "",
+                      "toPickUp": "Time zones without SecurityManager (TEC-14349, L136); WildFly 41 update (TEC-13735, L136)", "delayed": "" },
+        "customer": { "who": "All Planon customers, cloud and on-premise, and Cloud Ops.",
+                      "value": "Planon stays on a supported Java LTS and application server, with ongoing security fixes.",
+                      "points": [ "Supported runtime for security questionnaires and audits", "Better monitoring through Dynatrace on the new JDK" ] }
+      }
     }
   ],
   "notes": []
@@ -73,6 +85,7 @@ Alle teksten zijn Engels. Datums zijn `JJJJ-MM-DD` (lokaal, Europe/Amsterdam), t
 | `jira.link` | Jira-zoeklink naar alle items van het project |
 | `pageUpdated` | Datum van de laatste versie van de projectpagina |
 | `snapshot` | Status per Jira-sleutel, voor de vergelijking volgende week. Cyberdeck toont dit niet |
+| `steerco` | De teksten voor de STEERCO-slide (knop *STEERCO slides* in Cyberdeck, `js/steerco.js`): `title`, `manager`, `summary` (≤ 70), `risk` (≤ 170), `decision`, `progress` met zes regels (≤ 130: done, cancelled, inProgress, inTest, toPickUp, delayed) en `customer` (`who` ≤ 140, `value` ≤ 160, hoogstens 3 `points` ≤ 95). Regels in `prompts/weekcheck.md` stap 5b |
 | `notes` | Korte zinnen over wat niet lukte, en nieuwe of vervallen projecten |
 
 ## `projectsettings`
@@ -93,3 +106,4 @@ leest het alleen.
 - `name`: de projectnaam zoals in de PAF-tabel.
 - `page`: het pagina-id van de projectpagina. Nodig als de titel anders is dan `<name> | Project Overview`.
 - `epics`: extra Jira-sleutels die bij het project horen maar niet in de roadmaptabel staan. Mag leeg zijn.
+- `workstream` (optioneel): de werkstroom bovenaan de STEERCO-slide, bijvoorbeeld "Core Platform" (de standaard).
