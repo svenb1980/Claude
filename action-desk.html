@@ -145,6 +145,31 @@
   svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
   kbd { font-family: var(--mono); font-size: 11.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); border-bottom-width: 2px; background: var(--surface); color: var(--ink); white-space: nowrap; }
 
+  /* ---------- agent briefing (written each weekday morning by the mail & calendar agent) ---------- */
+  .agent { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .agent .ahead { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+  .agent .akey { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .agent .aline { flex: 1 1 320px; font-size: 15px; font-weight: 600; line-height: 1.35; min-width: 0; }
+  .agent .astamp { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .agent .ahead button { padding: 3px 9px; font-size: 13px; }
+  .agent .acols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 28px; }
+  .agent h3 { margin: 0 0 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+  .agent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .agent li { font-size: 13.5px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+  .agent li a { color: var(--ink); font-weight: 600; text-decoration: none; }
+  .agent li a:hover { text-decoration: underline; }
+  .agent .why { color: var(--ink-2); }
+  .agent .meta { color: var(--ink-3); }
+  .agent .due { color: var(--high); font-weight: 600; }
+  .agent .atime { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); margin-right: 6px; white-space: nowrap; }
+  .agent li.heads { color: var(--med); }
+  .agent li.heads a { color: var(--med); }
+  .agent .quiet { margin: 6px 0 0; font-size: 13px; color: var(--ink-3); }
+  .agent details { font-size: 13px; color: var(--ink-2); }
+  .agent details summary { cursor: pointer; color: var(--ink-3); }
+  .agent details ul { margin-top: 6px; }
+  .agent .afoot { font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 8px; }
+
   /* ---------- team briefing ---------- */
   .brief { display: grid; grid-template-columns: repeat(var(--teams, 4), minmax(0, 1fr)); gap: 10px; }
   .tile { text-align: left; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); font-weight: 400; min-width: 0; }
@@ -344,6 +369,8 @@
       <button id="btn-refresh" class="primary" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></svg>Refresh</button>
     </div>
   </header>
+
+  <section class="agent" id="agent" aria-label="Morning briefing" hidden></section>
 
   <div class="brief" id="brief" aria-label="Team briefing"></div>
 
@@ -2057,6 +2084,55 @@ Return a JSON array: [{"id": "...", "priority": "high|medium|low", "next": "..."
     $("#issues").hidden = !msgs.length;
   }
 
+  // ---------- agent briefing ----------
+  // The mail & calendar agent (a scheduled Claude task) writes one document each weekday morning to
+  // data/users/<you>/agentbriefing. Format: mail-agenda-agent/briefing-format.md. Shown only on the day it is for.
+  let agentBrief = null;
+  const agentArr = (a, n) => Array.isArray(a) ? a.filter(x => x && typeof x === "object").slice(0, n) : [];
+  function agentLink(text, url) {
+    const u = safeUrl(url);
+    return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(text)}</a>` : `<b>${esc(text)}</b>`;
+  }
+  function agentMail(i) {
+    return `<li>${agentLink(i.title || "(no subject)", i.link)}${i.from ? ` <span class="meta">· ${esc(i.from)}</span>` : ""}${i.deadline ? ` <span class="due">· ${esc(i.deadline)}</span>` : ""}${i.why ? `<div class="why">${esc(i.why)}</div>` : ""}</li>`;
+  }
+  function agentDay(d) {
+    const issues = agentArr(d.issues, 8).map(x => `<li class="heads">⚠ ${x.link ? agentLink(x.text, x.link) : esc(x.text)}</li>`);
+    const meetings = agentArr(d.meetings, 12).map(m => `<li><span class="atime">${esc(m.start || "")}${m.end ? "–" + esc(m.end) : ""}</span>${agentLink(m.title || "(meeting)", m.link)}${m.with ? ` <span class="meta">· ${esc(m.with)}</span>` : ""}${m.note ? `<div class="why">${esc(m.note)}</div>` : ""}</li>`);
+    const routine = +d.routine > 0 ? `<p class="quiet">+ ${+d.routine} standup${+d.routine === 1 ? "" : "s"} and other routine meetings</p>` : "";
+    const empty = !issues.length && !meetings.length ? `<p class="quiet">No meetings that need preparing.</p>` : "";
+    return `<div><h3>${esc(d.label || d.date || "")}</h3>${issues.length || meetings.length ? `<ul>${issues.join("")}${meetings.join("")}</ul>` : ""}${empty}${routine}</div>`;
+  }
+  function renderAgent() {
+    const box = $("#agent");
+    const b = agentBrief;
+    if (!b || b.date !== localDay(now())) { box.hidden = true; return; }
+    box.hidden = false;
+    const collapsed = store.get("ad.agentFolded", "") === b.date;
+    const made = new Date(b.createdAt);
+    const stamp = isNaN(made) ? "" : made.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const head = `<div class="ahead"><span class="akey">Morning briefing</span><span class="aline">${esc(b.headline || "")}</span>${stamp ? `<span class="astamp">${esc(stamp)}</span>` : ""}<button type="button" class="ghost" data-agent="fold" aria-expanded="${!collapsed}">${collapsed ? "Show" : "Hide"}</button></div>`;
+    if (collapsed) { setHtml(box, head); return; }
+    const mail = b.mail && typeof b.mail === "object" ? b.mail : {};
+    const action = agentArr(mail.action, 12);
+    const info = agentArr(mail.info, 30);
+    const noise = mail.noise && typeof mail.noise === "object" ? mail.noise : {};
+    const groups = agentArr(noise.groups, 8).map(g => `${esc(g.label)} ${+g.count || 0}`).join(", ");
+    const mailCol = `<div><h3>Needs you</h3>${action.length ? `<ul>${action.map(agentMail).join("")}</ul>` : `<p class="quiet">Nothing in your mail needs you right now.</p>`}
+      ${info.length ? `<details><summary>For your information (${info.length})</summary><ul>${info.map(agentMail).join("")}</ul></details>` : ""}</div>`;
+    const days = agentArr(b.days, 3).map(agentDay).join("");
+    const foot = [];
+    if (+noise.count > 0) foot.push(`Filtered out ${+noise.count} notifications${groups ? `: ${groups}` : ""}.`);
+    for (const n of (Array.isArray(b.notes) ? b.notes : []).filter(t => typeof t === "string").slice(0, 4)) foot.push(esc(n));
+    setHtml(box, `${head}<div class="acols">${mailCol}${days}</div>${foot.length ? `<p class="afoot">${foot.join(" ")}</p>` : ""}`);
+  }
+  $("#agent").addEventListener("click", ev => {
+    const b = ev.target.closest("[data-agent=fold]");
+    if (!b || !agentBrief) return;
+    store.set("ad.agentFolded", store.get("ad.agentFolded", "") === agentBrief.date ? "" : agentBrief.date);
+    renderAgent();
+  });
+
   const STATUS_LABEL = { sick: "sick", leave: "leave", away: "away", remote: "remote", issue: "heads-up", maybe: "possibly off", likely: "likely off" };
   const AWAY = ["sick", "leave", "away", "likely", "maybe"];
   function renderBrief() {
@@ -2414,7 +2490,7 @@ Return a JSON array: [{"id": "...", "priority": "high|medium|low", "next": "..."
     const wasInList = !!(ae && ae.closest && ae.closest("#list"));
     const caret = ae && ae.id === "composer-text" ? [ae.selectionStart, ae.selectionEnd] : null;
     mainMemo = computeMainItems();
-    try { renderTabs(); renderSources(); renderBrief(); renderIssues(); renderList(); renderPane(); renderSummary(); }
+    try { renderTabs(); renderSources(); renderAgent(); renderBrief(); renderIssues(); renderList(); renderPane(); renderSummary(); }
     finally { mainMemo = null; }
     $("#sender-rules").textContent = `Sender rules: ${triage.allow.length} always shown, ${triage.block.length} always filtered.`;
     if (focusList) { focusList = false; focusRow(); return; }
@@ -2760,6 +2836,11 @@ Return a JSON array: [{"id": "...", "priority": "high|medium|low", "next": "..."
       if (!uid) return;
       reportDoc = db.doc("data/users/" + uid + "/teamreport");
       sfDoc = db.doc("data/users/" + uid + "/sfapprover");
+      db.doc("data/users/" + uid + "/agentbriefing").onSnapshot(snap => {
+        const d = snap.exists ? JSON.parse(JSON.stringify(snap.data() || {})) : null;
+        agentBrief = d && typeof d.date === "string" ? d : null;
+        renderAgent();
+      }, () => { agentBrief = null; renderAgent(); });
       const tref = db.doc("data/users/" + uid + "/triage");
       let tfirst = true;
       tref.onSnapshot(snap => {

@@ -3,7 +3,7 @@
 Een agent die zelf je Outlook-mail en -agenda bijhoudt en je op het goede moment een seintje geeft.
 **Action Desk** is een dashboard dat je zelf opent. Deze agent komt **naar jou toe**.
 
-Status: Fase 0 afgerond (keuzes vastgelegd op 20-11-2026).
+Status: Fase 0 afgerond (keuzes vastgelegd op 20-11-2026). Fase 1 in aanbouw: het blok *Morning briefing* in Action Desk is klaar, de instructies staan in `prompts/ochtendbriefing.md`.
 
 ---
 
