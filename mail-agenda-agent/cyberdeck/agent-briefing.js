@@ -137,7 +137,7 @@
     if (!setBox.dataset.ready) {
       const form = (kind, extra) => `<form class="bday-add" data-agentadd="${kind}" autocomplete="off">
         <input type="text" name="name" maxlength="80" placeholder="Name" aria-label="Name">
-        <input type="email" name="email" maxlength="120" placeholder="name@company.com" aria-label="Email address">${extra}
+        <input type="text" inputmode="email" spellcheck="false" name="email" maxlength="120" placeholder="name@company.com" aria-label="Email address">${extra}
         <button type="submit">Add</button></form>`;
       setBox.innerHTML = `<h3 id="set-h-agent">Mail agent</h3>
         <div class="field"><b style="font-size:14px">Your people and 1:1 rhythm</b>
