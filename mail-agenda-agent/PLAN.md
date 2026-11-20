@@ -8,10 +8,11 @@ taak *Mail- en agenda-agent – ochtendbriefing* (ma–vr 07:45) heeft de Micros
 65 mails en de agenda in ongeveer 1,5 minuut en schreef de briefing in Cyberdeck. Eén run kost ongeveer $1,60. Fase 2 (de
 urgent-check van elk uur) moet daarom veel lichter zijn: alleen nieuwe mail sinds de vorige check, en alleen VIP's en incidenten.
 
-**Fase 2 in aanbouw:** de instructies staan in `prompts/urgent-check.md`. Cyberdeck toont de urgente meldingen van vandaag in rood
-bovenaan het Briefing-blok. De geplande taak *Mail- en agenda-agent – urgent-check* (ma–vr 08:31–16:31, elk uur, met pushmelding)
-bestaat maar staat uit, tot de Microsoft 365-koppeling erop staat en de testrun geslaagd is. De VIP-lijst staat in het document
-`agentsettings` in Cyberdeck en is nog leeg.
+**Fase 2 draait sinds 20-11-2026.** De instructies staan in `prompts/urgent-check.md`. Cyberdeck toont de urgente meldingen van
+vandaag in rood bovenaan het Briefing-blok. De geplande taak *Mail- en agenda-agent – urgent-check* (ma–vr 08:31–16:31, elk uur,
+met pushmelding) heeft de Microsoft 365-koppeling. De testrun duurde 18 seconden en kostte ongeveer $0,33. Bij 9 runs per dag is
+dat zo'n $3 per werkdag; samen met de briefing ongeveer $100 per maand. De VIP-lijst (2 personen) staat in het document
+`agentsettings` in Cyberdeck, niet in de repo.
 
 ---
 
@@ -110,7 +111,7 @@ niets dubbel bouwen.
 
 1. ~~Akkoord op pushmeldingen~~: akkoord op 20-11-2026, voor de urgent-check (Fase 2).
 2. ~~Microsoft 365-koppeling op de geplande taak~~: aangezet op 20-11-2026, testrun geslaagd.
-3. **VIP-lijst**: je leidinggevende en sleutelpersonen (Fase 2). Je vult die in bij Action Desk, niet in de repo.
+3. ~~VIP-lijst~~: twee personen, op 20-11-2026 in Cyberdeck gezet (`agentsettings`). Aanpassen? Vraag het Claude.
 4. **1-op-1-ritme per teamlid** (Fase 4). Ik vul de lijst vooraf met de mensen uit je standup-chats, jij zet het ritme erbij.
 5. ~~Tijden bevestigen~~: bevestigd op 20-11-2026. Briefing om 07:45 en de uurcheck van 08:00 tot 17:00 (Europe/Amsterdam).
 
