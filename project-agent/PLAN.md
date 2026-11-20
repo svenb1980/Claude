@@ -237,8 +237,8 @@ PROJECTAGENT (geplande taak, maandag 07:15)
    in de headline, met een link naar de projectweergave. Dat is een kleine aanpassing in de prompt van de mail-agent.
 2. **Eigen notities per project.** In de projectkaart kun je een notitie bijhouden, bijvoorbeeld afspraken uit STEERCO.
    Die notitie staat in `projectsettings`. De agent leest hem en neemt hem mee in zijn oordeel en in de STEERCO-tekst.
-3. **STEERCO-update klaarzetten.** Per project een korte statustekst (status, voortgang, risico's, wat je nodig hebt)
-   in Cyberdeck, met een kopieerknop, om in je STEERCO-slide of mail te plakken.
+3. **STEERCO-slides met één druk op de knop.** Per project een slide in de opmaak van de STEERCO-deck, gevuld met de
+   laatste status, om te downloaden als .pptx. Uitgewerkt in *Fase 4: STEERCO-slides* onderaan.
 4. **Bezetting per project.** Uit de teamtabel van de projectpagina en de Jira-eigenaars blijkt wie eraan werkt. Cyberdeck
    kent het verlof al (`team.js`). De kaart toont wie er deze week is, en waarschuwt als het werk op één persoon ligt
    (bijvoorbeeld Java 25: Harsha).
@@ -337,3 +337,62 @@ Projects week 47: 2 red, 2 amber, 0 green
 ```
 
 **Nog te volgen:** de runs van maandag 23 en 30 november. Daarna is fase 3 klaar en kan fase 4 beginnen.
+
+---
+
+## Fase 4: STEERCO-slides (requirements vastgesteld op 20-11-2026)
+
+Met één druk op de knop in Cyberdeck een PowerPoint met **één slide per project**, in de opmaak van slide 24 (*Event
+Connector Improvement*) van *STEERCO updates November 2026.pptx* (SharePoint, Core Leadership › Steerco updates).
+
+### Vastgelegde keuzes
+
+| Onderwerp | Keuze |
+|---|---|
+| Knop | **STEERCO slides** in de projectweergave van Cyberdeck |
+| Actualiteit | **Eerst een verse check.** De knop start de projectagent (ongeveer 2 minuten, ongeveer $1,50) en maakt de slides zodra het nieuwe overzicht binnen is |
+| RAG op de slide | **Voorstel van de agent, aanpasbaar.** Vóór het genereren staat per project de kleur van de agent klaar en kun je hem wijzigen |
+| Resultaat | **Downloaden** als .pptx; de slides plak je zelf in het maanddeck |
+| Opmaak | **Exact als slide 24.** De gebruiker levert het .pptx-bestand; de vormgeving wordt daaruit overgenomen |
+
+### Functionele requirements
+
+- **FR-S1** In de projectweergave staat een knop **STEERCO slides**. Daaronder per project een keuze voor de RAG-kleur
+  (Green / Amber / Red), met de kleur van de agent voorgeselecteerd.
+- **FR-S2** De knop start eerst de geplande taak *Projectagent – weekcheck* via de koppeling *Claude Code Remote*.
+  Cyberdeck toont dat de check loopt en wacht tot er een nieuw `projectstatus` binnen is (hoogstens 5 minuten).
+  Lukt het starten niet of duurt het te lang, dan biedt Cyberdeck aan de slides te maken met de laatste check, met de
+  datum erbij.
+- **FR-S3** Het bestand heeft één slide per project, in de volgorde van de projectweergave. Elke slide heeft de opmaak
+  van slide 24.
+- **FR-S4** De vakken van de slide worden zo gevuld:
+
+  | Vak op de slide | Bron |
+  |---|---|
+  | Werkstroom (*CORE PLATFORM*) | `projectsettings`, per project; standaard *Core Platform* |
+  | Projectnaam | Naam van het project (PAF-pagina) |
+  | Risk / impediment | Top-risico's van de projectpagina en de rode en oranje signalen van de agent, kort |
+  | STEERCO decision needed? + beschrijving | Open punten van de projectpagina die om een STEERCO-besluit vragen; anders *No* |
+  | Done | Werk-items die sinds de vorige STEERCO (31 dagen) klaar zijn, met Jira-sleutel |
+  | In progress | Werk-items in uitvoering, met release |
+  | In test | Werk-items met een teststatus (bijvoorbeeld *Test*, *Review*, *QA*) |
+  | To be picked up | Niet-gestarte werk-items van de huidige en volgende release |
+  | Delayed | Werk-items waarvan de eindrelease voorbij is of die naar een latere release schoven |
+  | Cancelled | Items die de pagina *off the plan* of *not planned* noemt en die in Jira zijn gesloten |
+  | Customer value | *To whom* en *Value we add* van de projectpagina: klant, waarde en drie punten |
+  | RAG | Keuze uit FR-S1 |
+  | Project manager | *Manager Projects* van de projectpagina |
+  | Voettekst | "STEERCO Progress Update · <maand jaar> · " + één zin samenvatting |
+  | Timeline (als de opmaak die heeft) | Startdatum (PAF-pagina), vandaag, einddatum, en *ON PLAN* / *AT RISK* / *DATE BEING SET* |
+
+- **FR-S5** De projectagent schrijft deze teksten elke run mee als blok `steerco` per project in `projectstatus`. Zo maakt
+  de knop het bestand zonder extra werk van Claude.
+- **FR-S6** Bestandsnaam: `STEERCO <maand> <jaar> - <naam gebruiker>.pptx`. Downloaden gaat via Cyberdeck, zoals de
+  andere bestanden.
+- **FR-S7** Alle teksten in het Engels, kort genoeg voor de vakken van de slide, met Jira-sleutels tussen haakjes,
+  zoals in de novemberdeck.
+
+### Status
+
+Wachten op het .pptx-bestand van de gebruiker. Daarna in één keer: het blok `steerco` in de weekcheck, de slide in de
+opmaak van slide 24, en de knop in Cyberdeck.
