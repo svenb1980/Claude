@@ -2,6 +2,7 @@
 // Two scheduled Claude tasks write to your private store (format: mail-agenda-agent/briefing-format.md in the repo):
 // - each weekday at 07:45 the briefing, in data/users/<you>/agentbriefing; shown only on the day it is for;
 // - every hour the urgent check, in data/users/<you>/agenturgent; today's alerts show in red at the top, even when folded.
+// The briefing can point to reply drafts the agent put in your Outlook Drafts ("Draft ready") and carry a Prep per meeting.
 // A plain script like the others; it uses esc, safeUrl, store and now from state.js and keeps everything else to itself.
 (() => {
   const box = document.getElementById("agent");
@@ -16,13 +17,26 @@
     const u = safeUrl(url);
     return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(text)}</a>` : `<b>${esc(text)}</b>`;
   };
-  const mailRow = i => `<li>${link(i.title || "(no subject)", i.link)}${i.from ? ` <span class="meta">· ${esc(i.from)}</span>` : ""}${i.deadline ? ` <span class="due">· ${esc(i.deadline)}</span>` : ""}${i.why ? `<div class="why">${esc(i.why)}</div>` : ""}</li>`;
+  const draftLink = i => { const u = i.draft && typeof i.draft === "object" ? safeUrl(i.draft.link) : ""; return u ? ` <a class="adraft" href="${esc(u)}" target="_blank" rel="noopener" title="Open the reply draft in Outlook">Draft ready</a>` : ""; };
+  const mailRow = i => `<li>${link(i.title || "(no subject)", i.link)}${i.from ? ` <span class="meta">· ${esc(i.from)}</span>` : ""}${i.deadline ? ` <span class="due">· ${esc(i.deadline)}</span>` : ""}${draftLink(i)}${i.why ? `<div class="why">${esc(i.why)}</div>` : ""}</li>`;
+  function prepHtml(p) {
+    if (!p || typeof p !== "object") return "";
+    const mails = list(p.mails, 3).map(x => `<li>${link(x.title || "(no subject)", x.link)}${x.from ? ` <span class="meta">· ${esc(x.from)}</span>` : ""}</li>`);
+    const jira = list(p.jira, 3).filter(x => x.key).map(x => `<li>${link(x.key, x.link)}${x.summary ? ` ${esc(x.summary)}` : ""}${x.status ? ` <span class="meta">· ${esc(x.status)}</span>` : ""}</li>`);
+    const points = (Array.isArray(p.points) ? p.points : []).filter(t => typeof t === "string" && t.trim()).slice(0, 3).map(t => `<li>${esc(t)}</li>`);
+    const goal = typeof p.goal === "string" && p.goal.trim() ? `<p class="why">${esc(p.goal)}</p>` : "";
+    if (!goal && !mails.length && !jira.length && !points.length) return "";
+    return `<details class="aprep"><summary>Prep</summary>${goal}`
+      + (mails.length ? `<h4>Related mail</h4><ul>${mails.join("")}</ul>` : "")
+      + (jira.length ? `<h4>Jira</h4><ul>${jira.join("")}</ul>` : "")
+      + (points.length ? `<h4>Open points</h4><ul>${points.join("")}</ul>` : "") + `</details>`;
+  }
   const alertRow = a => `<li><span class="atag">${a.kind === "vip" ? "VIP" : "Incident"}</span>${link(a.title || "(no subject)", a.link)}`
     + `${a.from ? ` <span class="meta">· ${esc(a.from)}</span>` : ""}${hm(a.when) ? ` <span class="meta">· ${esc(hm(a.when))}</span>` : ""}`
     + `${a.why ? `<div class="why">${esc(a.why)}</div>` : ""}</li>`;
   function dayCol(d) {
     const issues = list(d.issues, 8).map(x => `<li class="heads">⚠ ${x.link ? link(x.text, x.link) : esc(x.text)}</li>`);
-    const meetings = list(d.meetings, 12).map(m => `<li><span class="atime">${esc(m.start || "")}${m.end ? "–" + esc(m.end) : ""}</span>${link(m.title || "(meeting)", m.link)}${m.with ? ` <span class="meta">· ${esc(m.with)}</span>` : ""}${m.note ? `<div class="why">${esc(m.note)}</div>` : ""}</li>`);
+    const meetings = list(d.meetings, 12).map(m => `<li><span class="atime">${esc(m.start || "")}${m.end ? "–" + esc(m.end) : ""}</span>${link(m.title || "(meeting)", m.link)}${m.with ? ` <span class="meta">· ${esc(m.with)}</span>` : ""}${m.note ? `<div class="why">${esc(m.note)}</div>` : ""}${prepHtml(m.prep)}</li>`);
     const n = Math.max(0, Math.floor(+d.routine || 0));
     return `<div><h3>${esc(d.label || d.date || "")}</h3>`
       + (issues.length || meetings.length ? `<ul>${issues.join("")}${meetings.join("")}</ul>` : `<p class="quiet">No meetings that need preparing.</p>`)
@@ -60,10 +74,10 @@
       html += `<p class="afoot">Last urgent check ${esc(checked)}.</p>`;
     }
     if (html !== drawn) {
-      const open = box.querySelector("details[open]") !== null; // keep "For your information" open across redraws
+      const open = [...box.querySelectorAll("details")].map(d => d.open); // keep what you opened open across redraws
       box.innerHTML = html;
       drawn = html;
-      if (open) { const det = box.querySelector("details"); if (det) det.open = true; }
+      box.querySelectorAll("details").forEach((d, k) => { if (open[k]) d.open = true; });
     }
     box.hidden = false;
   }

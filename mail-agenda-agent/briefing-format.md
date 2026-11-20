@@ -24,7 +24,8 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
         "when": "2026-11-22T18:02:00Z",
         "why": "Asks you to sign off the Q4 budget.",
         "deadline": "due Wed",
-        "link": "https://outlook.office365.com/owa/?ItemID=…"
+        "link": "https://outlook.office365.com/owa/?ItemID=…",
+        "draft": { "link": "https://outlook.office365.com/owa/?ItemID=…" }
       }
     ],
     "info": [
@@ -42,7 +43,12 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
       "routine": 5,
       "issues": [ { "text": "Database Planning (09:00) overlaps Standup core and Daily Huddle.", "link": "https://…" } ],
       "meetings": [
-        { "start": "10:30", "end": "11:00", "title": "1:1 title", "with": "1:1", "note": "", "link": "https://…" }
+        { "start": "10:30", "end": "11:00", "title": "1:1 title", "with": "1:1", "note": "", "link": "https://…" },
+        { "start": "13:30", "end": "14:30", "title": "OneVoice feedback", "with": "7 people, you organise", "link": "https://…",
+          "prep": { "goal": "Reflect on the OneVoice results and agree on follow-up actions.",
+                    "mails": [ { "title": "OneVoice results", "from": "Display Name", "when": "…", "link": "https://…" } ],
+                    "jira": [ { "key": "FCN-3013", "summary": "…", "status": "In Progress", "link": "https://…/browse/FCN-3013" } ],
+                    "points": [ "Who owns the follow-up actions?" ] } }
       ]
     },
     { "date": "2026-11-24", "label": "Tomorrow", "routine": 5, "issues": [], "meetings": [] }
@@ -57,10 +63,11 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
 | `createdAt` | Moment van schrijven, ISO in UTC |
 | `headline` | Eén zin van maximaal ongeveer 110 tekens: het belangrijkste van de dag |
 | `mail.since` | Begin van het mailvenster (vorige werkdag 07:45 lokaal) |
-| `mail.action` | Mail die iets van jou vraagt, het belangrijkste eerst. Maximaal 12 |
+| `mail.action` | Mail die iets van jou vraagt, het belangrijkste eerst. Maximaal 12. `draft.link` wijst naar het conceptantwoord dat de agent in je Outlook-map *Concepten* zette (`existing: true` als dat er al stond). Cyberdeck toont dan *Draft ready* |
 | `mail.info` | Relevant maar geen actie, of al beantwoord. Maximaal 30. Staat in Action Desk ingeklapt |
 | `mail.noise` | Alleen aantallen: meldingen, timecards, vergaderreacties en dergelijke |
 | `days[]` | Vandaag en de volgende werkdag. `routine` = aantal standups en huddles (niet getoond). `issues` = waarschuwingen. `meetings` = niet-routine meetings met `start`/`end` als `HH:MM` lokale tijd |
+| `meetings[].prep` | Alleen voor vandaag, bij niet-routine meetings met minstens twee andere deelnemers (maximaal 4): `goal` (doel uit de uitnodiging), `mails` (maximaal 3 gerelateerde mails van de afgelopen 14 dagen), `jira` (maximaal 3 issues, met status als de Atlassian-koppeling er is) en `points` (maximaal 3 open punten). Cyberdeck toont het als uitklapbaar *Prep* onder de meeting |
 | `notes` | Korte meldingen over wat niet lukte. Maximaal 4 |
 | `link` | Altijd een `https://`-link, ongewijzigd uit Outlook. Andere links toont Cyberdeck als gewone tekst |
 

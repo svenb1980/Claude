@@ -92,13 +92,21 @@ VERSLAGGEVER ─► Action Desk (eigen opslag, ook het geheugen:
 
 ---
 
+**Fase 3 in test (20-11-2026):** de ochtendbriefing bereidt nu ook de niet-routine meetings van vandaag voor (doel,
+gerelateerde mail, Jira, open punten) en zet hoogstens 5 conceptantwoorden klaar in Outlook (*Concepten*). Cyberdeck toont
+*Prep* onder de meeting en *Draft ready* bij de mail. Voor de status van Jira-issues heeft de ochtendbriefing de
+Atlassian-koppeling nodig.
+
 ## Overlap met Cyberdeck
 
 De live Action Desk heet nu **Cyberdeck** en kan al veel zolang je hem open hebt: mail laten triëren door Claude, een kolom
 *Waiting on others*, directe medewerkers met verlof en verjaardagen, transcripts omzetten in acties, en scripts als
 `prep.js` en `rhythm.js`. De agent voegt vooral toe wat ook zonder open scherm moet gebeuren: de briefing om 07:45, de
-urgent-check met pushmelding en concepten in Outlook. **Vóór Fase 3 en 4** kijken we eerst wat Cyberdeck al doet, zodat we
-niets dubbel bouwen.
+urgent-check met pushmelding en concepten in Outlook. **Bekeken op 20-11-2026:** `prep.js` toont vanaf 30 minuten voor een
+kleine meeting (1–8 personen) wat er openstaat met die mensen; de agent voegt daar 's ochtends een brief per meeting aan toe.
+Ask Claude maakt concepten op jouw klik; de agent zet ze vooraf klaar. `waiting.js` doet *Waiting on others* al: de
+**Opvolger uit Fase 4 vervalt** daarom, op toezeggingen van jezelf na. `rhythm.js` gaat over focustijd en wrap-up, niet over
+het 1-op-1-ritme; dat blijft voor Fase 4.
 
 ## Fases
 
