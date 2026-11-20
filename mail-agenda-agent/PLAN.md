@@ -10,8 +10,9 @@ urgent-check van elk uur) moet daarom veel lichter zijn: alleen nieuwe mail sind
 
 **Fase 2 draait sinds 20-11-2026.** De instructies staan in `prompts/urgent-check.md`. Cyberdeck toont de urgente meldingen van
 vandaag in rood bovenaan het Briefing-blok. De geplande taak *Mail- en agenda-agent – urgent-check* (ma–vr 08:31–16:31, elk uur,
-met pushmelding) heeft de Microsoft 365-koppeling. De testrun duurde 18 seconden en kostte ongeveer $0,33. Bij 9 runs per dag is
-dat zo'n $3 per werkdag; samen met de briefing ongeveer $100 per maand. De VIP-lijst (2 personen) staat in het document
+met pushmelding) heeft de Microsoft 365-koppeling. Een pushmelding komt alleen bij iets urgents; bij "Niets urgents." blijft het
+stil (getest). Op het standaardmodel kostte een check ongeveer $0,33, daarom draait de urgent-check sinds 20-11-2026 op
+**Claude Haiku**. De ochtendbriefing blijft op het standaardmodel. De VIP-lijst (2 personen) staat in het document
 `agentsettings` in Cyberdeck, niet in de repo.
 
 ---

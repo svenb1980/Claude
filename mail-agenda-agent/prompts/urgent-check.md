@@ -1,7 +1,7 @@
 # Urgent-check: instructies voor de geplande run
 
 > Bron voor de geplande taak *Mail- en agenda-agent – urgent-check* (ma–vr elk uur om :31, van 08:31 tot 16:31, Europe/Amsterdam,
-> met pushmelding). De geplande taak bevat een kopie van deze tekst, met `{{ACTION_DESK_URL}}` ingevuld (de link naar Cyberdeck).
+> met pushmelding, model Claude Haiku). De geplande taak bevat een kopie van deze tekst, met `{{ACTION_DESK_URL}}` ingevuld (de link naar Cyberdeck).
 > Pas je hier iets aan, dan moet de geplande taak ook bijgewerkt worden (vraag Claude: "werk de urgent-check bij").
 
 ---
