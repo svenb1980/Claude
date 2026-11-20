@@ -1,10 +1,10 @@
 # Formaat van het briefing-document
 
-De ochtendbriefing schrijft één document in de eigen opslag van Action Desk:
+De ochtendbriefing schrijft één document in de eigen opslag van Cyberdeck (de huidige Action Desk):
 
 - **Plek:** `data/users/<jij>/agentbriefing`. Met de `ArtifactData`-tool is dat `collection: "data/users/me"` en `doc_id: "agentbriefing"`.
 - **Wie kan het zien:** alleen jij. `data/users/` is per gebruiker afgeschermd, ook voor anderen met wie Action Desk gedeeld is.
-- **Wanneer zichtbaar:** Action Desk toont het blok *Morning briefing* alleen op de dag in `date`. Een briefing van gisteren blijft verborgen.
+- **Wanneer zichtbaar:** Cyberdeck toont het blok *Morning briefing* bovenaan *Your actions*, alleen op de dag in `date`. Een briefing van gisteren blijft verborgen.
 - **Overschrijven:** elke run vervangt het hele document (`set`). Er is geen geschiedenis.
 
 Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
@@ -62,4 +62,4 @@ Alle teksten zijn in het **Engels**, net als de rest van Action Desk.
 | `mail.noise` | Alleen aantallen: meldingen, timecards, vergaderreacties en dergelijke |
 | `days[]` | Vandaag en de volgende werkdag. `routine` = aantal standups en huddles (niet getoond). `issues` = waarschuwingen. `meetings` = niet-routine meetings met `start`/`end` als `HH:MM` lokale tijd |
 | `notes` | Korte meldingen over wat niet lukte. Maximaal 4 |
-| `link` | Altijd een `https://`-link, ongewijzigd uit Outlook. Andere links toont Action Desk als gewone tekst |
+| `link` | Altijd een `https://`-link, ongewijzigd uit Outlook. Andere links toont Cyberdeck als gewone tekst |

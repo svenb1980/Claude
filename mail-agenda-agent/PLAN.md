@@ -3,7 +3,9 @@
 Een agent die zelf je Outlook-mail en -agenda bijhoudt en je op het goede moment een seintje geeft.
 **Action Desk** is een dashboard dat je zelf opent. Deze agent komt **naar jou toe**.
 
-Status: Fase 0 afgerond (keuzes vastgelegd op 20-11-2026). Fase 1 in aanbouw: het blok *Morning briefing* in Action Desk is klaar, de instructies staan in `prompts/ochtendbriefing.md`.
+Status op 20-11-2026: Fase 1 staat. Het blok *Morning briefing* draait in Cyberdeck (de huidige Action Desk) en de eerste briefing
+is geschreven. De geplande taak *Mail- en agenda-agent – ochtendbriefing* (ma–vr 07:45) bestaat, maar heeft nog geen
+Microsoft 365-koppeling (zie *Wat ik nog van je nodig heb*).
 
 ---
 
@@ -81,6 +83,14 @@ VERSLAGGEVER ─► Action Desk (eigen opslag, ook het geheugen:
 
 ---
 
+## Overlap met Cyberdeck
+
+De live Action Desk heet nu **Cyberdeck** en kan al veel zolang je hem open hebt: mail laten triëren door Claude, een kolom
+*Waiting on others*, directe medewerkers met verlof en verjaardagen, transcripts omzetten in acties, en scripts als
+`prep.js` en `rhythm.js`. De agent voegt vooral toe wat ook zonder open scherm moet gebeuren: de briefing om 07:45, de
+urgent-check met pushmelding en concepten in Outlook. **Vóór Fase 3 en 4** kijken we eerst wat Cyberdeck al doet, zodat we
+niets dubbel bouwen.
+
 ## Fases
 
 | Fase | Wat | Klaar als |
@@ -92,10 +102,13 @@ VERSLAGGEVER ─► Action Desk (eigen opslag, ook het geheugen:
 
 ## Wat ik nog van je nodig heb
 
-1. **Akkoord op pushmeldingen** van de Claude-app voor de urgent-check (Fase 2), of liever alleen Action Desk.
-2. **VIP-lijst**: je leidinggevende en sleutelpersonen (Fase 2). Je vult die in bij Action Desk, niet in de repo.
-3. **1-op-1-ritme per teamlid** (Fase 4). Ik vul de lijst vooraf met de mensen uit je standup-chats, jij zet het ritme erbij.
-4. ~~Tijden bevestigen~~: bevestigd op 20-11-2026. Briefing om 07:45 en de uurcheck van 08:00 tot 17:00 (Europe/Amsterdam).
+1. ~~Akkoord op pushmeldingen~~: akkoord op 20-11-2026, voor de urgent-check (Fase 2).
+2. **Microsoft 365-koppeling op de geplande taak.** Open in claude.ai de geplande taak *Mail- en agenda-agent – ochtendbriefing*
+   en zet bij de koppelingen Microsoft 365 aan. Kan dat daar niet, maak de taak daar dan opnieuw aan met de tekst uit
+   `prompts/ochtendbriefing.md`. Zonder koppeling kan de run je mail en agenda niet lezen.
+3. **VIP-lijst**: je leidinggevende en sleutelpersonen (Fase 2). Je vult die in bij Action Desk, niet in de repo.
+4. **1-op-1-ritme per teamlid** (Fase 4). Ik vul de lijst vooraf met de mensen uit je standup-chats, jij zet het ritme erbij.
+5. ~~Tijden bevestigen~~: bevestigd op 20-11-2026. Briefing om 07:45 en de uurcheck van 08:00 tot 17:00 (Europe/Amsterdam).
 
 ## Risico's en aandachtspunten
 

@@ -1,0 +1,28 @@
+/* Mail & calendar agent: the Morning briefing block at the top of Your actions (js/agent-briefing.js). */
+.agent { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.agent[hidden] { display: none; }
+.agent .ahead { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.agent .akey { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.agent .aline { flex: 1 1 320px; font-size: 15px; font-weight: 600; line-height: 1.35; min-width: 0; color: var(--ink); }
+.agent .astamp { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.agent .ahead button { padding: 3px 9px; font-size: 13px; }
+.agent .acols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 28px; }
+.agent h3 { margin: 0 0 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.agent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.agent li { font-size: 13.5px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+.agent li a { color: var(--ink); font-weight: 600; text-decoration: none; }
+.agent li a:hover { text-decoration: underline; }
+.agent .why { color: var(--ink-2); }
+.agent .meta { color: var(--ink-3); }
+.agent .due { color: var(--high); font-weight: 600; }
+.agent .atime { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); margin-right: 6px; white-space: nowrap; }
+.agent li.heads, .agent li.heads a { color: var(--med); }
+.agent .quiet { margin: 6px 0 0; font-size: 13px; color: var(--ink-3); }
+.agent details { font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+.agent details summary { cursor: pointer; color: var(--ink-3); }
+.agent details ul { margin-top: 6px; }
+.agent .afoot { margin: 0; font-size: 12.5px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 8px; }
+/* Cyberpunk: cut corners like the tiles, neon label. */
+[data-style="cyberpunk"] .agent { border-radius: 0; clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut))); }
+[data-style="cyberpunk"] .agent .akey { font-family: var(--display); text-shadow: 0 0 8px rgba(255, 43, 214, .55); }
+[data-style="cyberpunk"] .agent h3 { font-family: var(--display); color: var(--med); }
